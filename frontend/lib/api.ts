@@ -81,6 +81,15 @@ export const api = {
       { method: "POST", body: JSON.stringify(payload) },
     ),
 
+  sendPaymentLinkEmail: (registrationId: string, registrationToken: string) =>
+    apiFetch<{ message: string }>(
+      `/registrations/${encodeURIComponent(registrationId)}/payment-link-email`,
+      {
+        method: "POST",
+        headers: { "X-Registration-Token": registrationToken },
+      },
+    ),
+
   createPaymentOrder: (registrationId: string, registrationToken?: string) =>
     apiFetch<PaymentOrder>("/payments/create-order", {
       method: "POST",

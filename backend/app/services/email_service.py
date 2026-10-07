@@ -34,6 +34,7 @@ class EmailService:
         template_name: str,
         context: dict,
         inline_images: dict[str, bytes] | None = None,
+        metadata: dict | None = None,
     ) -> bool:
         """
         Renders HTML email, sends via SMTP if configured, and records log in database.
@@ -48,7 +49,15 @@ class EmailService:
             db.execute_write(
                 """INSERT INTO email_logs (id, recipient, subject, template_name, status, metadata, created_at)
                    VALUES (%s, %s, %s, %s, %s, %s, %s)""",
-                (log_id, recipient, subject, template_name, "PENDING", json.dumps({"template": template_name}), datetime.now(timezone.utc).isoformat())
+                (
+                    log_id,
+                    recipient,
+                    subject,
+                    template_name,
+                    "PENDING",
+                    json.dumps({"template": template_name, **(metadata or {})}),
+                    datetime.now(timezone.utc).isoformat(),
+                )
             )
 
             if has_app_context() and current_app.config.get("TESTING"):

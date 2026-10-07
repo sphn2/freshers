@@ -52,6 +52,7 @@ def test_ticket_email_embeds_qr_as_inline_mime_image(monkeypatch):
             "ticket_url": "https://example.com/tickets/test",
         },
         inline_images={"ticket-qr": b"\x89PNG\r\n\x1a\nimage-data"},
+        metadata={"registration_id": "registration-test"},
     )
 
     message = message_from_string(sent["message"], policy=default)

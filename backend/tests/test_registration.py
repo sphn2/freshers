@@ -1,5 +1,6 @@
 import pytest
 import uuid
+import json
 from app import create_app
 from app.services.event_service import event_service
 from app.services.registration_service import registration_service
@@ -46,6 +47,11 @@ def test_successful_registration(client):
     assert res.json["registration"]["status"] == "PENDING_PAYMENT"
     assert res.json["payment_token"]
     assert res.json["registration"]["ticket_price"] == 500
+    assert res.json["payment_link_sent"] is False
+    assert db.execute_one(
+        "SELECT COUNT(*) AS count FROM email_logs WHERE recipient = %s",
+        (payload["email"],),
+    )["count"] == 0
 
 def test_duplicate_registration_prevention(client):
     event = event_service.get_event_by_slug("freshers-2k26")
@@ -95,6 +101,51 @@ def test_public_registration_reuses_pending_booking_and_resends_pay_link(client)
         "SELECT COUNT(*) AS count FROM registrations WHERE id = %s",
         (first.json["registration"]["id"],),
     )["count"] == 1
+
+
+def test_checkout_sends_pending_payment_email_without_blocking_registration(client):
+    event = event_service.get_event_by_slug("freshers-2k26")
+    uid = uuid.uuid4().hex[:8]
+    payload = {
+        "full_name": "Checkout Email Tester",
+        "roll_number": f"26N81EMAIL{uid}",
+        "email": f"checkout.email.{uid}@sphoorthy.ac.in",
+        "phone": "9988776655",
+        "department": "ECE",
+    }
+    first = client.post(f"/api/v1/events/{event['id']}/register", json=payload)
+    registration_id = first.json["registration"]["id"]
+    token = first.json["payment_token"]
+    unauthorized = client.post(
+        f"/api/v1/registrations/{registration_id}/payment-link-email",
+    )
+    assert unauthorized.status_code == 403
+
+    response = client.post(
+        f"/api/v1/registrations/{registration_id}/payment-link-email",
+        headers={"X-Registration-Token": token},
+    )
+    repeated = client.post(
+        f"/api/v1/registrations/{registration_id}/payment-link-email",
+        headers={"X-Registration-Token": token},
+    )
+
+    assert response.status_code == 200
+    assert repeated.status_code == 200
+    email_logs = db.execute_query(
+        """SELECT metadata FROM email_logs
+           WHERE template_name = %s AND status = 'MOCKED'""",
+        ("emails/registration_confirmed.html",),
+    )
+    assert sum(
+        1
+        for row in email_logs
+        if (
+            json.loads(row["metadata"])
+            if isinstance(row["metadata"], str)
+            else row["metadata"]
+        ).get("registration_id") == registration_id
+    ) == 1
 
 
 def test_public_registration_prices_by_roll_prefix(client):

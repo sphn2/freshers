@@ -8,7 +8,7 @@ from app.services.audit_service import audit_service
 from app.services.email_service import email_service
 from app.services.registration_rules import ensure_event_capacity_available, ensure_registration_window_open
 from app.services.pricing_service import ticket_price_for_roll
-from app.utils.payment_access import create_access_token
+from app.utils.payment_access import create_access_token, registration_token_matches
 from app.config import config
 
 class RegistrationService:
@@ -149,31 +149,34 @@ class RegistrationService:
             registration = db.execute_one("SELECT * FROM registrations WHERE id = %s", (reg_id,))
             registration["ticket_id"] = ticket["id"] if ticket else None
 
-        # The notification is intentionally best-effort. A mail delivery issue
-        # must never reverse a committed registration.
-        checkout_url = f"{config.APP_URL.rstrip('/')}/checkout/{quote(reg_id)}#access_token={quote(payment_token)}"
-        email_sent = email_service.send_email(
-            recipient=data.email,
-            subject=(
-                f"Complete your payment — {event['title']}"
-                if ticket_price > 0
-                else f"Registration Confirmed — {event['title']}"
-            ),
-            template_name="emails/registration_confirmed.html",
-            context={
-                "student_name": data.full_name,
-                "event_title": event["title"],
-                "ticket_price": ticket_price,
-                "is_free": ticket_price == 0,
-                "ticket_code": ticket["ticket_code"] if ticket else None,
-                "roll_number": data.roll_number,
-                "department": data.department,
-                "venue": event["venue"],
-                "event_time": event["start_time"],
-                "checkout_url": checkout_url,
-                "existing_pending": existing_pending,
-            },
-        )
+        # First-time paid registrations go straight to checkout; send the
+        # payment email there so slow SMTP delivery cannot hold navigation.
+        email_sent = False
+        if ticket_price == 0 or existing_pending:
+            checkout_url = f"{config.APP_URL.rstrip('/')}/checkout/{quote(reg_id)}#access_token={quote(payment_token)}"
+            email_sent = email_service.send_email(
+                recipient=data.email,
+                subject=(
+                    f"Complete your payment — {event['title']}"
+                    if ticket_price > 0
+                    else f"Registration Confirmed — {event['title']}"
+                ),
+                template_name="emails/registration_confirmed.html",
+                context={
+                    "student_name": data.full_name,
+                    "event_title": event["title"],
+                    "ticket_price": ticket_price,
+                    "is_free": ticket_price == 0,
+                    "ticket_code": ticket["ticket_code"] if ticket else None,
+                    "roll_number": data.roll_number,
+                    "department": data.department,
+                    "venue": event["venue"],
+                    "event_time": event["start_time"],
+                    "checkout_url": checkout_url,
+                    "existing_pending": existing_pending,
+                },
+                metadata={"registration_id": reg_id},
+            )
         if existing_pending and not email_sent:
             db.execute_write(
                 "UPDATE registrations SET payment_access_token_hash = %s WHERE id = %s",
@@ -188,5 +191,72 @@ class RegistrationService:
         registration["existing_pending"] = existing_pending
         registration["payment_link_sent"] = email_sent
         return registration
+
+    @staticmethod
+    def send_payment_link_email(
+        registration_id: str,
+        payment_token: str,
+        user_id: str | None = None,
+        roles: list[str] | None = None,
+    ) -> bool:
+        registration = db.execute_one(
+            """SELECT r.id, r.user_id, r.full_name, r.roll_number, r.email,
+                      r.department, r.ticket_price, r.status,
+                      e.title AS event_title, e.venue, e.start_time, e.allow_online
+               FROM registrations r
+               JOIN events e ON e.id = r.event_id
+               WHERE r.id = %s""",
+            (registration_id,),
+        )
+        if not registration:
+            raise ValueError("Registration not found.")
+        if not (
+            (user_id and registration.get("user_id") == user_id)
+            or (roles and "ADMIN" in roles)
+            or registration_token_matches(registration_id, payment_token)
+        ):
+            raise PermissionError("You cannot access this registration.")
+        if registration["status"] != "PENDING_PAYMENT" or not registration["allow_online"]:
+            raise ValueError("This registration is not awaiting online payment.")
+
+        already_sent = db.execute_one(
+            """SELECT id FROM email_logs
+               WHERE recipient = %s
+                 AND template_name = %s
+                 AND status IN ('SENT', 'MOCKED')
+                 AND metadata ->> 'registration_id' = %s
+               LIMIT 1""",
+            (
+                registration["email"],
+                "emails/registration_confirmed.html",
+                registration_id,
+            ),
+        )
+        if already_sent:
+            return True
+
+        checkout_url = (
+            f"{config.APP_URL.rstrip('/')}/checkout/{quote(registration_id)}"
+            f"#access_token={quote(payment_token)}"
+        )
+        return email_service.send_email(
+            recipient=registration["email"],
+            subject=f"Complete your payment — {registration['event_title']}",
+            template_name="emails/registration_confirmed.html",
+            context={
+                "student_name": registration["full_name"],
+                "event_title": registration["event_title"],
+                "ticket_price": registration["ticket_price"],
+                "is_free": False,
+                "ticket_code": None,
+                "roll_number": registration["roll_number"],
+                "department": registration["department"],
+                "venue": registration["venue"],
+                "event_time": registration["start_time"],
+                "checkout_url": checkout_url,
+                "existing_pending": False,
+            },
+            metadata={"registration_id": registration_id},
+        )
 
 registration_service = RegistrationService()

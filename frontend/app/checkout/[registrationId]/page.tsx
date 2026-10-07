@@ -44,18 +44,29 @@ declare global {
   }
 }
 
+let razorpayScriptPromise: Promise<boolean> | null = null;
+
 function loadRazorpayScript(): Promise<boolean> {
-  return new Promise((resolve) => {
-    if (window.Razorpay) {
-      resolve(true);
-      return;
-    }
+  if (window.Razorpay) return Promise.resolve(true);
+  if (razorpayScriptPromise) return razorpayScriptPromise;
+
+  razorpayScriptPromise = new Promise((resolve) => {
     const script = document.createElement("script");
     script.src = "https://checkout.razorpay.com/v1/checkout.js";
-    script.onload = () => resolve(true);
-    script.onerror = () => resolve(false);
+    script.async = true;
+    script.dataset.razorpayCheckout = "true";
+    script.onload = () => {
+      const loaded = Boolean(window.Razorpay);
+      if (!loaded) razorpayScriptPromise = null;
+      resolve(loaded);
+    };
+    script.onerror = () => {
+      razorpayScriptPromise = null;
+      resolve(false);
+    };
     document.body.appendChild(script);
   });
+  return razorpayScriptPromise;
 }
 
 export default function PaymentCheckoutPage() {
@@ -65,6 +76,7 @@ export default function PaymentCheckoutPage() {
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
   const [registrationToken, setRegistrationToken] = useState<string | undefined>();
 
   useEffect(() => {
@@ -72,6 +84,12 @@ export default function PaymentCheckoutPage() {
       try {
         const token = new URLSearchParams(window.location.hash.slice(1)).get("access_token") || undefined;
         setRegistrationToken(token);
+        void loadRazorpayScript();
+        if (token) {
+          void api.sendPaymentLinkEmail(registrationId, token).catch((err: unknown) => {
+            setEmailError(errorMessage(err, "Payment link email could not be sent."));
+          });
+        }
         const data = await api.createPaymentOrder(registrationId, token);
         if (data.already_paid && data.ticket_id) {
           router.push(
@@ -204,6 +222,11 @@ export default function PaymentCheckoutPage() {
             <AlertCircle className="w-4 h-4 flex-shrink-0" />
             <span>{error}</span>
           </div>
+        )}
+        {emailError && (
+          <p role="status" className="border border-amber-200 bg-amber-50 p-3 text-xs font-medium text-amber-900">
+            {emailError} You can still complete payment here.
+          </p>
         )}
 
         {/* Order Details */}
