@@ -3,6 +3,7 @@ import logging
 import hashlib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.image import MIMEImage
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 import os
 import uuid
@@ -26,7 +27,14 @@ class EmailService:
         template = self.jinja_env.get_template(template_name)
         return template.render(**context)
 
-    def send_email(self, recipient: str, subject: str, template_name: str, context: dict) -> bool:
+    def send_email(
+        self,
+        recipient: str,
+        subject: str,
+        template_name: str,
+        context: dict,
+        inline_images: dict[str, bytes] | None = None,
+    ) -> bool:
         """
         Renders HTML email, sends via SMTP if configured, and records log in database.
         Exceptions are caught so email errors never block DB transactions.
@@ -58,13 +66,23 @@ class EmailService:
                 return False
 
             # Perform SMTP Send
-            msg = MIMEMultipart("alternative")
+            msg = MIMEMultipart("related" if inline_images else "alternative")
             msg["Subject"] = subject
             msg["From"] = f"{config.SMTP_FROM_NAME} <{config.SMTP_FROM_EMAIL}>"
             msg["To"] = recipient
 
+            body = MIMEMultipart("alternative") if inline_images else msg
+            if inline_images:
+                msg.attach(body)
+
             part = MIMEText(html_content, "html")
-            msg.attach(part)
+            body.attach(part)
+
+            for content_id, image_data in (inline_images or {}).items():
+                image = MIMEImage(image_data, _subtype="png")
+                image.add_header("Content-ID", f"<{content_id}>")
+                image.add_header("Content-Disposition", "inline")
+                msg.attach(image)
 
             with smtplib.SMTP(config.SMTP_HOST, config.SMTP_PORT, timeout=10) as server:
                 server.starttls()

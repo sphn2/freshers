@@ -1,5 +1,4 @@
 import uuid
-import base64
 from io import BytesIO
 from datetime import datetime, timezone
 from app.db import db
@@ -10,13 +9,13 @@ from app.services.audit_service import audit_service
 from app.utils.payment_access import create_access_token
 
 
-def ticket_qr_data_uri(token: str) -> str:
-    """Render a compact QR image for email without exposing any PII."""
+def ticket_qr_png(token: str) -> bytes:
+    """Render a compact QR image for inline email attachment without PII."""
     import qrcode
     image = qrcode.make(token)
     output = BytesIO()
     image.save(output, format="PNG")
-    return "data:image/png;base64," + base64.b64encode(output.getvalue()).decode("ascii")
+    return output.getvalue()
 
 class TicketService:
     @staticmethod
@@ -168,11 +167,12 @@ class TicketService:
                 "department": ticket["department"],
                 "venue": ticket["venue"],
                 "event_time": ticket["start_time"],
-                "qr_image": ticket_qr_data_uri(ticket["qr_token"]),
+                "qr_image": "cid:ticket-qr",
                 "ticket_url": (
                     f"{config.APP_URL.rstrip('/')}/tickets/{ticket['id']}#ticket_token={access_token}"
                 ),
             },
+            inline_images={"ticket-qr": ticket_qr_png(ticket["qr_token"])},
         )
 
     @staticmethod
@@ -233,9 +233,10 @@ class TicketService:
                 "venue": ticket["venue"],
                 "event_time": ticket["start_time"],
                 "reason": reason,
-                "qr_image": ticket_qr_data_uri(new_qr_token),
+                "qr_image": "cid:ticket-qr",
                 "ticket_url": f"{config.APP_URL.rstrip('/')}/tickets/{ticket_id}",
-            }
+            },
+            inline_images={"ticket-qr": ticket_qr_png(new_qr_token)},
         )
 
         audit_service.log("REISSUE_TICKET", "ticket", ticket_id, user_id, {
