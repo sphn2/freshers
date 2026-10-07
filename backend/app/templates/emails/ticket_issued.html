@@ -1,0 +1,67 @@
+{% extends "emails/base.html" %}
+
+{% block content %}
+<div class="badge">🎟️ OFFICIAL DIGITAL TICKET ISSUED</div>
+<h2 style="margin-top: 8px; color: #0f172a; font-size: 24px;">Your Event Pass is Ready!</h2>
+<p>Dear <strong>{{ student_name }}</strong>,</p>
+<p>Thank you for registering for <strong>{{ event_title }}</strong>. Your registration is confirmed and your official digital event entry pass is issued below.</p>
+
+<div class="ticket-box">
+    {% if qr_image %}
+    <img src="{{ qr_image }}" width="180" height="180" alt="Secure ticket QR code" style="display:block;margin:0 auto 16px;background:#fff;padding:8px;border-radius:12px;" />
+    {% endif %}
+    <div style="font-size: 12px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px;">
+        6-Digit Manual Fallback Entry Code
+    </div>
+    <div class="ticket-code">{{ ticket_code }}</div>
+    <p style="font-size: 12px; color: #64748b; margin: 4px 0 0 0;">
+        📱 Show this code at the main venue entrance if camera scanning fails.<br>
+        Also carries a unique QR code linked to your digital ticket.
+    </p>
+</div>
+
+{% if ticket_url %}<p style="text-align:center;font-size:12px;"><a href="{{ ticket_url }}">Open your secure digital ticket</a></p>{% endif %}
+
+<table class="details-table">
+    <tr>
+        <td class="label">Event Name</td>
+        <td class="value"><strong>{{ event_title }}</strong></td>
+    </tr>
+    <tr>
+        <td class="label">Attendee Name</td>
+        <td class="value">{{ student_name }}</td>
+    </tr>
+    <tr>
+        <td class="label">Roll Number</td>
+        <td class="value"><strong>{{ roll_number }}</strong></td>
+    </tr>
+    <tr>
+        <td class="label">Department</td>
+        <td class="value">{{ department }}</td>
+    </tr>
+    <tr>
+        <td class="label">Venue</td>
+        <td class="value">{{ venue }}</td>
+    </tr>
+    <tr>
+        <td class="label">Event Date & Time</td>
+        <td class="value">{{ event_time }}</td>
+    </tr>
+    <tr>
+        <td class="label">Ticket Status</td>
+        <td class="value" style="color: #10b981; font-weight: 700;">✓ ISSUED — VALID</td>
+    </tr>
+</table>
+
+<div class="notice">
+    <strong>📋 Gate Instructions:</strong><br>
+    • Present your digital ticket QR code at the entrance.<br>
+    • If QR scanning fails, show the <strong>6-digit code: {{ ticket_code }}</strong> to gate staff.<br>
+    • Each ticket allows exactly one-time entry — do not share.<br>
+    • Ticket is personal and non-transferable.
+</div>
+
+<div style="margin-top: 20px; padding: 12px 16px; background: #f0fdf4; border-left: 4px solid #10b981; border-radius: 4px; font-size: 13px; color: #065f46;">
+    <strong>Food Coupon:</strong> If food validation is enabled for this event, your food coupon will be available at the designated food counter. Present your ticket QR or 6-digit code at the food counter.
+</div>
+{% endblock %}

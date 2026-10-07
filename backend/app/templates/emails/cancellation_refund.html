@@ -1,0 +1,6 @@
+{% extends "emails/base.html" %}
+{% block content %}
+<div class="badge">EVENT UPDATE</div>
+<h2>Registration update for {{ event_title }}</h2>
+<p>Dear <strong>{{ student_name }}</strong>, {{ message }}</p>
+{% endblock %}

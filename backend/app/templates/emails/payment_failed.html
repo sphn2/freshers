@@ -1,0 +1,10 @@
+{% extends "emails/base.html" %}
+{% block content %}
+<div class="badge">PAYMENT NOT COMPLETED</div>
+<h2>Payment needs attention</h2>
+<p>Dear <strong>{{ student_name }}</strong>, we could not confirm your payment for <strong>{{ event_title }}</strong>.</p>
+<p>No ticket has been issued. Your registration is still available, and you can safely retry payment below.</p>
+<div style="text-align: center; margin: 24px 0;">
+    <a href="{{ payment_url }}" style="display: inline-block; padding: 13px 24px; background: #17221e; color: #fffdf5; border-radius: 4px; font-size: 14px; font-weight: 700; text-decoration: none;">Pay now</a>
+</div>
+{% endblock %}

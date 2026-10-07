@@ -1,0 +1,27 @@
+{% extends "emails/base.html" %}
+
+{% block content %}
+<div class="badge" style="background: #fef3c7; color: #92400e;">🔄 TICKET REISSUED</div>
+<h2 style="margin-top: 8px; color: #0f172a; font-size: 24px;">Your New Digital Event Pass</h2>
+<p>Dear <strong>{{ student_name }}</strong>,</p>
+<p>Your ticket for <strong>{{ event_title }}</strong> has been reissued by event administration.</p>
+{% if qr_image %}<p style="text-align:center;"><img src="{{ qr_image }}" width="180" height="180" alt="New secure ticket QR code" /></p>{% endif %}
+{% if ticket_url %}<p style="text-align:center;"><a href="{{ ticket_url }}">Open your secure digital ticket</a></p>{% endif %}
+
+<div style="background: #f8fafc; border: 2px dashed #cbd5e1; border-radius: 12px; padding: 20px; text-align: center; margin: 20px 0;">
+    <div style="font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: bold; tracking-wide: 1px;">NEW 6-DIGIT FALLBACK PASS CODE</div>
+    <div style="font-size: 36px; font-family: monospace; font-weight: 900; color: #2563eb; letter-spacing: 6px; margin: 10px 0;">
+        {{ ticket_code }}
+    </div>
+    <div style="font-size: 12px; color: #ef4444; font-weight: bold;">⚠️ Previous ticket code and QR pass have been invalidated.</div>
+</div>
+
+<p><strong>Reason for Reissue:</strong> {{ reason or "Administrative update" }}</p>
+
+<table style="width: 100%; font-size: 14px; margin-top: 15px;">
+    <tr><td style="color: #64748b;">Roll Number:</td><td><strong>{{ roll_number }}</strong></td></tr>
+    <tr><td style="color: #64748b;">Department:</td><td><strong>{{ department }}</strong></td></tr>
+    <tr><td style="color: #64748b;">Venue:</td><td><strong>{{ venue }}</strong></td></tr>
+    <tr><td style="color: #64748b;">Date & Time:</td><td><strong>{{ event_time }}</strong></td></tr>
+</table>
+{% endblock %}

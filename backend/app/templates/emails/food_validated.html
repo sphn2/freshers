@@ -1,0 +1,29 @@
+{% extends "emails/base.html" %}
+
+{% block content %}
+<div class="badge" style="background: #fef9c3; color: #854d0e;">FOOD CLAIMED</div>
+<h2 style="margin-top: 0; color: #0f172a;">Food Coupon Claimed — {{ event_title }}</h2>
+<p>Dear <strong>{{ student_name }}</strong>,</p>
+<p>Your food coupon entitlement has been successfully validated at the counter.</p>
+
+<table class="details-table">
+    <tr>
+        <td class="label">Ticket Code</td>
+        <td class="value"><strong>{{ ticket_code }}</strong></td>
+    </tr>
+    <tr>
+        <td class="label">Food Counter</td>
+        <td class="value">{{ food_location }}</td>
+    </tr>
+    <tr>
+        <td class="label">Claim Time</td>
+        <td class="value">{{ validated_at }}</td>
+    </tr>
+    <tr>
+        <td class="label">Status</td>
+        <td class="value"><span style="color: #854d0e; font-weight: 700;">CLAIMED (USED)</span></td>
+    </tr>
+</table>
+
+<p style="font-size: 13px; color: #64748b; margin-top: 24px;">Enjoy your meal! Please reach out to staff at the food desk if you have any questions.</p>
+{% endblock %}

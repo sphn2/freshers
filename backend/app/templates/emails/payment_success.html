@@ -1,0 +1,7 @@
+{% extends "emails/base.html" %}
+{% block content %}
+<div class="badge">PAYMENT CONFIRMED</div>
+<h2>Your payment was successful</h2>
+<p>Dear <strong>{{ student_name }}</strong>, your payment of <strong>₹{{ amount }}</strong> for <strong>{{ event_title }}</strong> is confirmed.</p>
+<p>Your ticket code is <strong>{{ ticket_code }}</strong>. Your digital ticket is attached to your ticket email.</p>
+{% endblock %}

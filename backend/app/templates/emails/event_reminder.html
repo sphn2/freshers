@@ -1,0 +1,7 @@
+{% extends "emails/base.html" %}
+{% block content %}
+<div class="badge">EVENT REMINDER</div>
+<h2>{{ event_title }} is coming up</h2>
+<p>Dear <strong>{{ student_name }}</strong>, this is a reminder for <strong>{{ event_title }}</strong>.</p>
+<p><strong>When:</strong> {{ event_time }}<br><strong>Where:</strong> {{ venue }}<br><strong>Ticket code:</strong> {{ ticket_code }}</p>
+{% endblock %}
