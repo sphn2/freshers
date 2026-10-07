@@ -8,6 +8,7 @@ from app.schemas.validation import (
     GateValidationResponse,
 )
 from app.services.audit_service import audit_service
+from app.services.email_service import email_service
 from app.utils.security import verify_signed_qr_token
 
 
@@ -36,9 +37,11 @@ def _ticket_lookup(req, lock: bool = False):
         lookups = [("t.ticket_code", req.ticket_code.strip())]
 
     for lookup_column, lookup_value in lookups:
-        query = f"""SELECT t.*, r.full_name AS student_name, r.roll_number, r.department
+        query = f"""SELECT t.*, r.full_name AS student_name, r.roll_number,
+                           r.department, r.email, e.title AS event_title
                     FROM tickets t
                     JOIN registrations r ON r.id = t.registration_id
+                    JOIN events e ON e.id = t.event_id
                     WHERE {lookup_column} = %s AND t.event_id = %s"""
         if lock and not db.is_sqlite:
             query += " FOR UPDATE OF t"
@@ -148,6 +151,18 @@ class ValidationService:
                     "ticket_code": ticket["ticket_code"],
                     "gate": req.gate_location,
                     "method": "QR" if req.qr_token else "MANUAL",
+                },
+            )
+            email_service.enqueue_email(
+                recipient=ticket["email"],
+                subject=f"Ticket Validated — {ticket['event_title']}",
+                template_name="emails/gate_validated.html",
+                context={
+                    "student_name": ticket["student_name"],
+                    "event_title": ticket["event_title"],
+                    "ticket_code": ticket["ticket_code"],
+                    "gate_location": req.gate_location,
+                    "validated_at": now,
                 },
             )
             return GateValidationResponse(
@@ -275,6 +290,18 @@ class ValidationService:
                 {
                     "ticket_code": ticket["ticket_code"],
                     "counter": req.food_location,
+                },
+            )
+            email_service.enqueue_email(
+                recipient=ticket["email"],
+                subject=f"Food Coupon Claimed — {ticket['event_title']}",
+                template_name="emails/food_validated.html",
+                context={
+                    "student_name": ticket["student_name"],
+                    "event_title": ticket["event_title"],
+                    "ticket_code": ticket["ticket_code"],
+                    "food_location": req.food_location,
+                    "validated_at": now,
                 },
             )
             return FoodValidationResponse(

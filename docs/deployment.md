@@ -43,7 +43,9 @@ Also configure the backend's secrets and integrations listed below. Generate
 new `SECRET_KEY` and `TICKET_SECRET_KEY` values; do not copy local credentials:
 `DATABASE_URL`, `SECRET_KEY`, `TICKET_SECRET_KEY`, `SUPABASE_URL`,
 `SUPABASE_JWKS_URL`, `SUPABASE_SECRET_KEY`, Razorpay credentials, and SMTP
-credentials.
+credentials. Configure a random `EMAIL_OUTBOX_WORKER_SECRET` of at least 32
+characters; set the identical value as a GitHub Actions repository secret
+named `EMAIL_OUTBOX_WORKER_SECRET`. Do not commit or expose this secret.
 
 For `SUPABASE_SECRET_KEY`, use the secret key from the same Supabase project
 as `SUPABASE_URL` (new keys start with `sb_secret_`; the legacy `service_role`
@@ -83,6 +85,9 @@ authentication; avoid allowing broader patterns than the deployments require.
    deploying guest registration and year-specific pricing. It adds the
    first-year (default ₹500), second-year (default ₹600), optional other-prefix
    event fees, plus hashed payment/ticket access capabilities.
+7. Run `migrations/007_email_notification_outbox.sql` before deploying queued
+   gate/food email notifications. It creates a private, RLS-enabled outbox
+   table; it grants no access to `anon` or `authenticated` clients.
 
 The nullable `events.registration_open` field is an override: `NULL` respects
 the scheduled registration window, `TRUE` opens registrations outside that
@@ -90,6 +95,18 @@ window, and `FALSE` closes registrations immediately. Apply migrations to the
 intended database through the Supabase SQL Editor or your established
 migration workflow; do not deploy the updated backend before this migration is
 applied.
+
+Gate and food scans enqueue attendee emails in the same database transaction
+as successful check-in/claim operations. They do not wait for SMTP. The
+`.github/workflows/email-outbox.yml` workflow calls the protected backend
+worker every five minutes and can also be run manually from GitHub Actions.
+Each workflow run drains up to ten messages. Failed messages are retried with
+backoff up to eight attempts; a failed notification never reverses a scan.
+Delivery is at-least-once: a rare worker interruption after SMTP accepts a
+message but before the database records success can cause a retry.
+Add the exact same strong random secret to backend Production environment
+variables and GitHub repository Actions secrets. Once deployed and the
+migration is applied, manually run the workflow once to verify delivery.
 
 ### 2. Backend Service Environment
 1. The backend is built as the `backend` service by the root Vercel project

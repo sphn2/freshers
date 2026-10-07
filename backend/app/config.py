@@ -46,6 +46,7 @@ class Config:
     SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
     SMTP_FROM_EMAIL: str = os.getenv("SMTP_FROM_EMAIL", "events@sphoorthy.ac.in")
     SMTP_FROM_NAME: str = os.getenv("SMTP_FROM_NAME", "Sphoorthy Events Desk")
+    EMAIL_OUTBOX_WORKER_SECRET: str = os.getenv("EMAIL_OUTBOX_WORKER_SECRET", "")
 
     # Client Web URL
     APP_URL: str = os.getenv("APP_URL", "http://localhost:3000")

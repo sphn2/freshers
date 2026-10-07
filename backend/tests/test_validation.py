@@ -41,6 +41,15 @@ def test_gate_and_food_validation(client):
         "ticket_code": ticket["ticket_code"],
         "gate_location": "Gate 2 Main",
     }
+    queued_email_count = db.execute_one(
+        """SELECT COUNT(*) AS count FROM email_outbox
+           WHERE recipient = %s
+             AND template_name IN (
+               'emails/gate_validated.html',
+               'emails/food_validated.html'
+           )""",
+        (f"gate.test.{unique_id}@sphoorthy.ac.in",),
+    )["count"]
     first_gate = client.post(
         "/api/v1/validation/gate", json=gate_payload, headers=gate_headers
     )
@@ -71,13 +80,6 @@ def test_gate_and_food_validation(client):
         "qr_token": ticket["qr_token"],
         "food_location": "Counter B",
     }
-    email_log_count = db.execute_one(
-        """SELECT COUNT(*) AS count FROM email_logs
-           WHERE template_name IN (
-               'emails/gate_validated.html',
-               'emails/food_validated.html'
-           )"""
-    )["count"]
     first_food = client.post(
         "/api/v1/validation/food", json=food_payload, headers=food_headers
     )
@@ -89,13 +91,31 @@ def test_gate_and_food_validation(client):
     )
     assert duplicate_food.status_code == 200
     assert duplicate_food.json["status"] == "FOOD_ALREADY_CLAIMED"
-    assert db.execute_one(
-        """SELECT COUNT(*) AS count FROM email_logs
-           WHERE template_name IN (
+    queued_emails = db.execute_query(
+        """SELECT template_name, recipient, context, status FROM email_outbox
+           WHERE recipient = %s
+             AND template_name IN (
                'emails/gate_validated.html',
                'emails/food_validated.html'
-           )"""
-    )["count"] == email_log_count
+           )
+           ORDER BY template_name""",
+        (f"gate.test.{unique_id}@sphoorthy.ac.in",),
+    )
+    assert len(queued_emails) == 2
+    assert all(email["status"] == "PENDING" for email in queued_emails)
+    assert {email["template_name"] for email in queued_emails} == {
+        "emails/gate_validated.html",
+        "emails/food_validated.html",
+    }
+    assert db.execute_one(
+        """SELECT COUNT(*) AS count FROM email_outbox
+           WHERE recipient = %s
+             AND template_name IN (
+               'emails/gate_validated.html',
+               'emails/food_validated.html'
+           )""",
+        (f"gate.test.{unique_id}@sphoorthy.ac.in",),
+    )["count"] == queued_email_count + 2
 
 
 def test_event_manager_validation_is_limited_to_assigned_events(client):

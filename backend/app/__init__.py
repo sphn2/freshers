@@ -13,6 +13,7 @@ from app.api.v1.validation import validation_bp
 from app.api.v1.offline import offline_bp
 from app.api.v1.admin import admin_bp
 from app.api.v1.auth import auth_bp
+from app.api.v1.email_outbox import email_outbox_bp
 
 def create_app():
     config.validate_production()
@@ -58,6 +59,7 @@ def create_app():
     app.register_blueprint(offline_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(auth_bp)
+    app.register_blueprint(email_outbox_bp)
 
     @app.route("/api/v1/health", methods=["GET"])
     def health_check():

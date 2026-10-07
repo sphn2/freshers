@@ -224,6 +224,30 @@ class DatabaseManager:
                 created_at TEXT
             );
 
+            CREATE TABLE IF NOT EXISTS email_outbox (
+                id TEXT PRIMARY KEY,
+                recipient TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                template_name TEXT NOT NULL,
+                context TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'PENDING'
+                    CHECK (status IN ('PENDING', 'PROCESSING', 'SENT', 'FAILED')),
+                attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+                available_at TEXT NOT NULL,
+                claimed_at TEXT,
+                sent_at TEXT,
+                last_error TEXT,
+                created_at TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_email_outbox_pending
+                ON email_outbox (available_at, created_at)
+                WHERE status = 'PENDING';
+
+            CREATE INDEX IF NOT EXISTS idx_email_outbox_stale_claims
+                ON email_outbox (claimed_at)
+                WHERE status = 'PROCESSING';
+
             CREATE TABLE IF NOT EXISTS audit_logs (
                 id TEXT PRIMARY KEY,
                 user_id TEXT,

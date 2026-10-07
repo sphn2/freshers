@@ -127,16 +127,18 @@ Tests cover:
 - Public registration, registration windows, duplicate protection, and retries
 - Year-based pricing and optional other-prefix fees
 - Razorpay order/signature validation and payment idempotency
-- Guest payment/ticket capabilities and email behavior
+- Guest payment/ticket capabilities and email behavior, including queued
+  gate/food notifications
 - Gate/food validation, offline registration, and concurrency safety
 
 ---
 
 ## Deployment Summary
 
-1. **Database**: Apply migrations `001` through `006` in order to the intended
+1. **Database**: Apply migrations `001` through `007` in order to the intended
    Supabase/Postgres database. Migrations `005` and `006` are required for
-   registration controls, public guest checkout, and tiered pricing.
+   registration controls, public guest checkout, and tiered pricing;
+   `007` enables queued gate/food emails.
 2. **Vercel project**: Import the repository with the repository root as the
    project root. The root [`vercel.json`](vercel.json) defines separate
    `backend` (Flask) and `frontend` (Next.js) services. It routes `/api/*` to
@@ -147,7 +149,10 @@ Tests cover:
    Never expose server secrets through `NEXT_PUBLIC_*`.
 4. **Payments and email**: Set the Razorpay webhook to
    `https://<your-domain>/api/v1/webhooks/razorpay` and configure working
-   SMTP credentials for checkout and ticket emails.
+   SMTP credentials for checkout and ticket emails. For queued gate/food
+   notifications, set `EMAIL_OUTBOX_WORKER_SECRET` in the backend Production
+   environment and as a GitHub Actions repository secret with the same strong
+   random value. The workflow polls every five minutes.
 
 See [docs/deployment.md](docs/deployment.md), [docs/security.md](docs/security.md),
 [docs/api.md](docs/api.md), and [docs/database.md](docs/database.md) for the
