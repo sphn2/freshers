@@ -23,6 +23,50 @@ binding is needed because the frontend does not make a server-to-server call to
 the backend. Local `npm run dev` continues to use the Next.js rewrite and
 `BACKEND_API_URL`; that development proxy is disabled on Vercel.
 
+### Production domains and environment variables
+Configure the following variables in Vercel for the **Production** environment,
+scoped to the indicated service. Use `https://freshers.rudvay.tech` as the
+canonical site URL for links emailed by the backend; the Vercel domain also
+serves the site.
+
+**Backend service (`backend`)**
+
+```env
+FLASK_ENV=production
+FLASK_DEBUG=false
+USE_SQLITE=false
+APP_URL=https://freshers.rudvay.tech
+ALLOWED_ORIGINS=https://freshers.rudvay.tech,https://freshers-nine.vercel.app
+```
+
+Also configure the backend's secrets and integrations listed below. Generate
+new `SECRET_KEY` and `TICKET_SECRET_KEY` values; do not copy local credentials:
+`DATABASE_URL`, `SECRET_KEY`, `TICKET_SECRET_KEY`, `SUPABASE_URL`,
+`SUPABASE_JWKS_URL`, `SUPABASE_SECRET_KEY`, Razorpay credentials, and SMTP
+credentials.
+
+**Frontend service (`frontend`)**
+
+```env
+NEXT_PUBLIC_API_URL=/api/v1
+NEXT_PUBLIC_SUPABASE_URL=https://<your-project-ref>.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<your-supabase-publishable-key>
+```
+
+The Supabase URL and publishable key are public client configuration. Never
+put a Supabase secret/service-role key, database password, Razorpay secret, or
+SMTP password in a `NEXT_PUBLIC_*` variable.
+
+In Supabase Dashboard → Authentication → URL Configuration, set the **Site
+URL** to `https://freshers.rudvay.tech`. Add these allowed redirect URLs:
+
+- `https://freshers.rudvay.tech/**`
+- `https://freshers-nine.vercel.app/**`
+- `http://localhost:3000/**` for local development, if needed
+
+Use Vercel preview URL patterns only if preview deployments need Supabase
+authentication; avoid allowing broader patterns than the deployments require.
+
 ### 1. Database Setup (Supabase)
 1. Create a new Supabase Project.
 2. In the Supabase SQL Editor, run `migrations/001_initial_schema.sql`.
@@ -47,23 +91,14 @@ applied.
 1. The backend is built as the `backend` service by the root Vercel project
    configuration. For non-Vercel hosting, run `gunicorn wsgi:app` from
    `backend/`.
-2. Configure these production environment variables for the backend service:
-   `FLASK_ENV=production`,
-   `USE_SQLITE=false`, `DATABASE_URL`, `SECRET_KEY`, `TICKET_SECRET_KEY`,
-   `SUPABASE_URL`, `SUPABASE_JWKS_URL`, `SUPABASE_SECRET_KEY`, `RAZORPAY_KEY_ID`,
-   `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`, `SMTP_USERNAME`,
-   `SMTP_PASSWORD`, `APP_URL`, and `ALLOWED_ORIGINS`. Use separate random
-   secrets per environment and HTTPS-only public URLs. Production starts only
-   when its required configuration is present.
-   Keep `SUPABASE_SECRET_KEY` server-only; never add it to a `NEXT_PUBLIC_*`
-   variable.
+2. Configure the backend's required production environment variables as
+   described above. Use separate random secrets per environment and HTTPS-only
+   public URLs. Production starts only when required configuration is present.
+   Keep `SUPABASE_SECRET_KEY` server-only.
 
 ### 3. Frontend Deployment (Vercel)
 1. The frontend is built as the `frontend` service by the root Vercel project
-   configuration. Configure `NEXT_PUBLIC_API_URL=/api/v1`,
-   `NEXT_PUBLIC_SUPABASE_URL`, and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`.
-   Never add Supabase secret/service role keys or Razorpay secrets to
-   `NEXT_PUBLIC_*` variables.
+   configuration. Configure its production variables as described above.
 
 ### 4. Razorpay Webhook Configuration
 1. Open Razorpay Dashboard -> Settings -> Webhooks.

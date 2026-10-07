@@ -113,6 +113,37 @@ def test_non_admin_cannot_create_staff_accounts():
     assert response.status_code == 403
 
 
+def test_staff_account_reports_rejected_supabase_admin_key(monkeypatch):
+    class RejectedAuthResponse:
+        status_code = 401
+
+        @staticmethod
+        def json():
+            return {"message": "Invalid API key"}
+
+    monkeypatch.setattr(config, "SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setattr(config, "SUPABASE_SECRET_KEY", "server-only-test-secret")
+    monkeypatch.setattr(
+        "app.services.staff_account_service.requests.post",
+        lambda *args, **kwargs: RejectedAuthResponse(),
+    )
+
+    with create_app().test_client() as client:
+        response = client.post(
+            "/api/v1/admin/staff-accounts",
+            headers={"X-Test-User-Role": "ADMIN"},
+            json={
+                "email": "staff.operator@example.com",
+                "full_name": "Staff Operator",
+                "password": "Unique-Test-Password-2026",
+                "role": "GATE_STAFF",
+            },
+        )
+
+    assert response.status_code == 503
+    assert "SUPABASE_SECRET_KEY" in response.json["error"]
+
+
 def test_failed_role_assignment_removes_new_supabase_auth_user(monkeypatch):
     app = create_app()
     user_id = str(uuid.uuid4())

@@ -28,23 +28,19 @@ function OfflineCollectorContent() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [department, setDepartment] = useState("CSE");
-  const [amountCollected, setAmountCollected] = useState(250);
   const [receiptNumber, setReceiptNumber] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<OfflineRegistrationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const selectedEvent = events.find((event) => event.id === selectedEventId) || null;
+  const normalizedRollNumber = rollNumber.trim().toUpperCase();
   const expectedAmount = selectedEvent
-    ? rollNumber.trim().startsWith("26")
+    ? normalizedRollNumber.startsWith("26")
       ? selectedEvent.first_year_ticket_price
-      : rollNumber.trim().startsWith("25")
+      : normalizedRollNumber.startsWith("25")
         ? selectedEvent.second_year_ticket_price
         : selectedEvent.other_ticket_price
     : null;
-
-  useEffect(() => {
-    if (expectedAmount !== null) setAmountCollected(expectedAmount);
-  }, [expectedAmount]);
 
   useEffect(() => {
     async function loadEvents() {
@@ -54,7 +50,6 @@ function OfflineCollectorContent() {
         if (offlineEvents.length > 0) {
           setEvents(offlineEvents);
           setSelectedEventId(offlineEvents[0].id);
-          setAmountCollected(offlineEvents[0].first_year_ticket_price);
         }
       } catch (err: unknown) {
         setError(errorMessage(err, "Failed loading events."));
@@ -84,16 +79,16 @@ function OfflineCollectorContent() {
 
   const handleEventChange = (eventId: string) => {
     setSelectedEventId(eventId);
-    const ev = events.find((e) => e.id === eventId);
-    if (ev) {
-      setAmountCollected(ev.first_year_ticket_price);
-    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setResult(null);
+    if (!selectedEventId || expectedAmount === null) {
+      setError("Enter an eligible roll number with a configured event fee.");
+      return;
+    }
     setSubmitting(true);
 
     try {
@@ -104,7 +99,7 @@ function OfflineCollectorContent() {
         email: email.trim(),
         phone: phone.trim(),
         department,
-        amount_collected: Number(amountCollected),
+        amount_paid: expectedAmount,
         receipt_number: receiptNumber.trim() || undefined,
       };
 
@@ -280,15 +275,13 @@ function OfflineCollectorContent() {
           </div>
 
           <div>
-            <label className="field-label">Amount collected (₹) · fee by roll prefix *</label>
-            <input
-              type="number"
-              required
-              min="0"
-              value={amountCollected}
-              onChange={(e) => setAmountCollected(Number(e.target.value))}
-              className="field-control !font-bold"
-            />
+            <label className="field-label">Required cash amount (₹) · based on roll prefix</label>
+              <input
+                type="number"
+                readOnly
+                value={expectedAmount ?? ""}
+                className="field-control !bg-slate-100 !font-bold"
+              />
             {expectedAmount === null && rollNumber && (
               <p role="alert" className="mt-2 text-xs font-semibold text-rose-700">
                 This roll-number prefix has no configured fee.

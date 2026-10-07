@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 import uuid
 
 import pytest
+from pydantic import ValidationError
 
 from app import create_app
 from app.db import db
@@ -9,6 +10,19 @@ from app.schemas.offline import OfflineRegistrationRequest
 from app.services.event_service import event_service
 from app.services.offline_service import offline_service
 from app.services.ticket_service import ticket_service
+
+
+def test_offline_registration_uses_backend_amount_paid_field():
+    with pytest.raises(ValidationError):
+        OfflineRegistrationRequest(
+            event_id=str(uuid.uuid4()),
+            full_name="Offline Field Test",
+            roll_number="25N81A0001",
+            email="offline.field.test@sphoorthy.ac.in",
+            phone="9876543218",
+            department="CSE",
+            amount_collected=600,
+        )
 
 
 def make_request(event_id: str, amount: float) -> OfflineRegistrationRequest:

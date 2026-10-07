@@ -67,6 +67,17 @@ class StaffAccountService:
             if response.status_code in (400, 409, 422) and isinstance(message, str):
                 raise StaffAccountError(message[:240], 409 if response.status_code == 409 else 400)
             logger.error("Supabase Auth user creation returned HTTP %s.", response.status_code)
+            if response.status_code in (401, 403):
+                raise StaffAccountError(
+                    "Supabase Auth rejected the backend admin key. Check SUPABASE_URL "
+                    "and SUPABASE_SECRET_KEY in the Vercel backend service settings.",
+                    503,
+                )
+            if response.status_code == 429:
+                raise StaffAccountError(
+                    "Supabase Auth is rate-limiting account creation. Wait and try again.",
+                    503,
+                )
             raise StaffAccountError("Supabase Auth could not create this account.", 502)
 
         try:

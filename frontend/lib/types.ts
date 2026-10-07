@@ -122,7 +122,7 @@ export interface ValidationResult {
 
 export interface OfflineRegistrationInput extends RegistrationInput {
   event_id: string;
-  amount_collected: number;
+  amount_paid: number;
   receipt_number?: string;
 }
 

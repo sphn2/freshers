@@ -582,7 +582,8 @@ function AdminDashboardContent() {
 
           <div className="space-y-3">
             {events.map((ev) => (
-              <div key={ev.id} className="panel flex flex-col justify-between gap-4 p-5 md:flex-row md:items-center">
+              <div key={ev.id} className="panel p-5">
+                <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <h3 className="editorial-title truncate text-2xl">{ev.title}</h3>
@@ -655,8 +656,9 @@ function AdminDashboardContent() {
                     </button>
                   )}
                 </div>
+                </div>
                 {editingPricesEventId === ev.id && (
-                  <div className="grid basis-full gap-3 border-t border-slate-200 pt-4 sm:grid-cols-2">
+                  <div className="mt-4 grid gap-3 border-t border-slate-200 pt-4 sm:grid-cols-2">
                     <label className="text-[10px] font-extrabold uppercase tracking-[.08em] text-slate-600">
                       First-year · 26… (₹)
                       <input
