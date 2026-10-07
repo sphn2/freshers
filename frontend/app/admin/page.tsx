@@ -105,12 +105,16 @@ function AdminDashboardContent() {
         setStatusMsg("No events are assigned to your account.");
         return;
       }
-      const mData = await api.getAdminMetrics(eventId || undefined);
-      setMetrics(mData);
       if (role === "ADMIN") {
-        const logsData = await api.getAuditLogs(20);
+        const [mData, logsData] = await Promise.all([
+          api.getAdminMetrics(eventId || undefined),
+          api.getAuditLogs(20),
+        ]);
+        setMetrics(mData);
         setAuditLogs(logsData.audit_logs);
       } else {
+        const mData = await api.getAdminMetrics(eventId || undefined);
+        setMetrics(mData);
         setAuditLogs([]);
       }
       setStatusMsg(null);

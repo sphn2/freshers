@@ -1,5 +1,6 @@
 import pytest
 from app import create_app
+from app.middleware.auth import _get_jwks_client
 
 
 @pytest.fixture
@@ -14,6 +15,27 @@ def test_health_check(client):
     response = client.get("/api/v1/health")
     assert response.status_code == 200
     assert response.json["status"] == "HEALTHY"
+
+
+def test_jwks_client_is_reused(monkeypatch):
+    clients = []
+
+    class FakeJwksClient:
+        def __init__(self, url, timeout):
+            clients.append((url, timeout))
+
+    _get_jwks_client.cache_clear()
+    monkeypatch.setattr("app.middleware.auth.jwt.PyJWKClient", FakeJwksClient)
+    try:
+        first = _get_jwks_client("https://example.supabase.co/auth/v1/.well-known/jwks.json")
+        second = _get_jwks_client("https://example.supabase.co/auth/v1/.well-known/jwks.json")
+    finally:
+        _get_jwks_client.cache_clear()
+
+    assert first is second
+    assert clients == [
+        ("https://example.supabase.co/auth/v1/.well-known/jwks.json", 3)
+    ]
 
 
 def test_unauthorized_admin_access(client):

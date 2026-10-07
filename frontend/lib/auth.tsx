@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { getApiBaseUrl } from "@/lib/api-url";
@@ -36,13 +36,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [role, setRole] = useState<Role>("STUDENT");
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(Boolean(supabase));
+  const hydratedToken = useRef<string | null>(null);
+  const hydratedRole = useRef<Role | null>(null);
   const router = useRouter();
 
   const hydrate = async (accessToken: string, fallbackUser: { id: string; email?: string | null }) => {
+    if (hydratedToken.current === accessToken && hydratedRole.current) {
+      return hydratedRole.current;
+    }
     const response = await fetch(`${getApiBaseUrl()}/auth/me`, { headers: { Authorization: `Bearer ${accessToken}` } });
     if (!response.ok) throw new Error("Your account could not be authorized for this platform.");
     const data = await response.json();
     const assignedRole = selectRole(data.roles || []);
+    hydratedToken.current = accessToken;
+    hydratedRole.current = assignedRole;
     setToken(accessToken);
     setRole(assignedRole);
     setUser({
@@ -73,6 +80,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     void restore();
     const { data: listener } = client.auth.onAuthStateChange((_event, session) => {
       if (!session?.access_token || !session.user) {
+        hydratedToken.current = null;
+        hydratedRole.current = null;
         setToken(null);
         setRole("STUDENT");
         setUser(null);
@@ -98,6 +107,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setToken(null);
     setRole("STUDENT");
     setUser(null);
+    hydratedToken.current = null;
+    hydratedRole.current = null;
     router.push("/");
   };
 

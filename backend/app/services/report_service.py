@@ -8,8 +8,9 @@ class ReportService:
         where_clause = "WHERE event_id = %s" if event_id else ""
         params = (event_id,) if event_id else ()
 
-        reg_stats = db.execute_one(
-            f"""SELECT 
+        with db.transaction():
+            reg_stats = db.execute_one(
+                f"""SELECT
                 COUNT(*) as total_registrations,
                 SUM(CASE WHEN status IN ('PAID', 'OFFLINE_PAID') THEN 1 ELSE 0 END) as total_paid,
                 SUM(CASE WHEN status = 'PENDING_PAYMENT' THEN 1 ELSE 0 END) as total_pending,
@@ -17,27 +18,27 @@ class ReportService:
                 SUM(CASE WHEN status IN ('PAID', 'OFFLINE_PAID') THEN ticket_price ELSE 0 END) as total_revenue,
                 SUM(CASE WHEN status = 'PAID' AND payment_method = 'ONLINE' THEN ticket_price ELSE 0 END) as online_revenue,
                 SUM(CASE WHEN status = 'OFFLINE_PAID' OR payment_method = 'CASH' THEN ticket_price ELSE 0 END) as offline_revenue
-               FROM registrations {where_clause}""",
-            params
-        )
+                   FROM registrations {where_clause}""",
+                params
+            )
 
-        ticket_stats = db.execute_one(
-            f"""SELECT 
+            ticket_stats = db.execute_one(
+                f"""SELECT
                 COUNT(*) as total_tickets,
                 SUM(CASE WHEN status = 'GATE_VALIDATED' THEN 1 ELSE 0 END) as gate_validated_count,
                 SUM(CASE WHEN status = 'ISSUED' THEN 1 ELSE 0 END) as unvalidated_count
-               FROM tickets {where_clause}""",
-            params
-        )
+                   FROM tickets {where_clause}""",
+                params
+            )
 
-        food_stats = db.execute_one(
-            f"""SELECT 
+            food_stats = db.execute_one(
+                f"""SELECT
                 COUNT(*) as total_food_entitlements,
                 SUM(CASE WHEN status = 'CLAIMED' THEN 1 ELSE 0 END) as food_claimed_count,
                 SUM(CASE WHEN status = 'UNCLAIMED' THEN 1 ELSE 0 END) as food_remaining_count
-               FROM food_entitlements {where_clause}""",
-            params
-        )
+                   FROM food_entitlements {where_clause}""",
+                params
+            )
 
         return {
             "total_registrations": reg_stats["total_registrations"] if reg_stats else 0,

@@ -1,5 +1,5 @@
 import jwt
-from functools import wraps
+from functools import lru_cache, wraps
 from flask import request, jsonify, g, current_app
 from app.config import config
 from app.db import db
@@ -19,7 +19,7 @@ def _decode_supabase_token(token: str) -> dict:
     if config.SUPABASE_JWKS_URL:
         if not config.SUPABASE_URL:
             raise ValueError("SUPABASE_URL is required for JWKS validation.")
-        key = jwt.PyJWKClient(config.SUPABASE_JWKS_URL, timeout=3).get_signing_key_from_jwt(token).key
+        key = _get_jwks_client(config.SUPABASE_JWKS_URL).get_signing_key_from_jwt(token).key
         algorithms = ["RS256", "ES256"]
         issuer = f"{config.SUPABASE_URL.rstrip('/')}/auth/v1"
     elif config.SUPABASE_JWT_SECRET:
@@ -37,6 +37,11 @@ def _decode_supabase_token(token: str) -> dict:
         issuer=issuer,
         options={"require": ["exp", "iat", "sub", "aud", "iss"]},
     )
+
+
+@lru_cache(maxsize=8)
+def _get_jwks_client(jwks_url: str):
+    return jwt.PyJWKClient(jwks_url, timeout=3)
 
 
 def _set_test_identity(token: str = None) -> bool:
