@@ -81,8 +81,19 @@ class EmailService:
             for content_id, image_data in (inline_images or {}).items():
                 image = MIMEImage(image_data, _subtype="png")
                 image.add_header("Content-ID", f"<{content_id}>")
-                image.add_header("Content-Disposition", "inline")
+                image.add_header(
+                    "Content-Disposition",
+                    "inline",
+                    filename="ticket-qr.png",
+                )
                 msg.attach(image)
+                fallback_image = MIMEImage(image_data, _subtype="png")
+                fallback_image.add_header(
+                    "Content-Disposition",
+                    "attachment",
+                    filename="ticket-qr.png",
+                )
+                msg.attach(fallback_image)
 
             with smtplib.SMTP(config.SMTP_HOST, config.SMTP_PORT, timeout=10) as server:
                 server.starttls()

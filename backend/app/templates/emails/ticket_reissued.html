@@ -6,6 +6,7 @@
 <p>Dear <strong>{{ student_name }}</strong>,</p>
 <p>Your ticket for <strong>{{ event_title }}</strong> has been reissued by event administration.</p>
 {% if qr_image %}<p style="text-align:center;"><img src="{{ qr_image }}" width="180" height="180" alt="New secure ticket QR code" style="display:block;width:180px;height:180px;margin:0 auto;background:#fff;padding:8px;border-radius:8px;" /></p>{% endif %}
+<p style="text-align:center;font-size:12px;color:#64748b;">If your email app does not display the QR above, open the attached ticket-qr.png image.</p>
 {% if ticket_url %}<p style="text-align:center;"><a href="{{ ticket_url }}">Open your secure digital ticket</a></p>{% endif %}
 
 <div style="background: #f8fafc; border: 2px dashed #cbd5e1; border-radius: 12px; padding: 20px; text-align: center; margin: 20px 0;">

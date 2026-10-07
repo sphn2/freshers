@@ -63,8 +63,12 @@ def test_ticket_email_embeds_qr_as_inline_mime_image(monkeypatch):
 
     assert delivered is True
     assert message.get_content_type() == "multipart/related"
-    assert len(images) == 1
-    assert images[0]["Content-ID"] == "<ticket-qr>"
-    assert images[0]["Content-Disposition"] == "inline"
+    inline_images = [part for part in images if part.get_content_disposition() == "inline"]
+    attached_images = [part for part in images if part.get_content_disposition() == "attachment"]
+    assert len(inline_images) == 1
+    assert inline_images[0]["Content-ID"] == "<ticket-qr>"
+    assert inline_images[0].get_filename() == "ticket-qr.png"
+    assert len(attached_images) == 1
+    assert attached_images[0].get_filename() == "ticket-qr.png"
     assert len(html_parts) == 1
     assert 'src="cid:ticket-qr"' in html_parts[0].get_content()
