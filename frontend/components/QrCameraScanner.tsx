@@ -4,10 +4,20 @@ import { useEffect, useId, useRef, useState } from "react";
 import { Camera, CameraOff } from "lucide-react";
 import type { Html5Qrcode } from "html5-qrcode";
 
-export function QrCameraScanner({ onScan }: { onScan: (decodedText: string) => void }) {
+export function QrCameraScanner({
+  onScan,
+  scanEnabled = true,
+}: {
+  onScan: (decodedText: string) => void;
+  scanEnabled?: boolean;
+}) {
   const reactId = useId();
   const scannerId = `qr-camera-${reactId.replace(/:/g, "")}`;
   const onScanRef = useRef(onScan);
+  const scanEnabledRef = useRef(scanEnabled);
+  const scanLockedRef = useRef(false);
+  const lastDecodedRef = useRef<string | null>(null);
+  const rearmTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const [active, setActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -16,6 +26,10 @@ export function QrCameraScanner({ onScan }: { onScan: (decodedText: string) => v
   useEffect(() => {
     onScanRef.current = onScan;
   }, [onScan]);
+
+  useEffect(() => {
+    scanEnabledRef.current = scanEnabled;
+  }, [scanEnabled]);
 
   useEffect(() => {
     if (!active) return;
@@ -45,12 +59,26 @@ export function QrCameraScanner({ onScan }: { onScan: (decodedText: string) => v
           { fps: 10, qrbox: { width: 240, height: 240 } },
           (decodedText) => {
             if (!mounted) return;
-            mounted = false;
-            setStarting(false);
-            setActive(false);
+            if (rearmTimeoutRef.current) {
+              clearTimeout(rearmTimeoutRef.current);
+              rearmTimeoutRef.current = null;
+            }
+            if (decodedText === lastDecodedRef.current) return;
+            if (!scanEnabledRef.current) return;
+            lastDecodedRef.current = decodedText;
+            scanLockedRef.current = true;
             onScanRef.current(decodedText);
           },
-          () => {},
+          () => {
+            if (!lastDecodedRef.current || rearmTimeoutRef.current) return;
+            rearmTimeoutRef.current = setTimeout(() => {
+              if (scanEnabledRef.current) {
+                lastDecodedRef.current = null;
+                scanLockedRef.current = false;
+              }
+              rearmTimeoutRef.current = null;
+            }, 700);
+          },
         );
         started = true;
         if (!mounted) {
@@ -71,6 +99,7 @@ export function QrCameraScanner({ onScan }: { onScan: (decodedText: string) => v
     void startCamera();
     return () => {
       mounted = false;
+      if (rearmTimeoutRef.current) clearTimeout(rearmTimeoutRef.current);
       const scanner = scannerRef.current;
       if (started && scanner?.isScanning) {
         void scanner.stop().then(() => {

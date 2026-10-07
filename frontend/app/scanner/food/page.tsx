@@ -28,6 +28,11 @@ function FoodScannerContent() {
   const [result, setResult] = useState<ValidationResult | null>(null);
 
   useEffect(() => {
+    if (!result || typeof navigator.vibrate !== "function") return;
+    navigator.vibrate(result.status === "VALID" ? [90, 45, 90] : [220]);
+  }, [result]);
+
+  useEffect(() => {
     async function loadEvents() {
       try {
         const data = role === "EVENT_MANAGER"
@@ -48,7 +53,7 @@ function FoodScannerContent() {
   }, [role]);
 
   const handleKeypadPress = (num: string) => {
-    if (inputCode.length < 6) {
+    if (!validating && inputCode.length < 6) {
       setInputCode((prev) => prev + num);
     }
   };
@@ -63,7 +68,7 @@ function FoodScannerContent() {
   };
 
   const executeFoodValidation = async (scannedQr?: string) => {
-    if (!scannedQr && !inputCode) return;
+    if (validating || (!scannedQr && !inputCode)) return;
     if (!selectedEventId) {
       setResult({ status: "INVALID_TICKET", message: "No food-enabled events are available." });
       return;
@@ -152,7 +157,9 @@ function FoodScannerContent() {
       {/* Validation Result Display */}
       {result && (
         <div
-          className={`p-5 rounded-3xl border-2 text-center space-y-2 shadow-sm transition-all ${
+          role="status"
+          aria-live="assertive"
+          className={`scan-result-flash p-5 rounded-3xl border-2 text-center space-y-2 shadow-sm ${
             result.status === "VALID"
               ? "bg-blue-600 text-white border-blue-700"
               : result.status === "FOOD_ALREADY_CLAIMED"
@@ -199,7 +206,15 @@ function FoodScannerContent() {
       {/* Keypad Scanner */}
       <div className="panel grid min-w-0 grid-cols-1 gap-6 p-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:gap-8 md:p-7">
         <div className="min-w-0 md:col-span-2">
-          <QrCameraScanner onScan={(decodedText) => void executeFoodValidation(decodedText)} />
+          <QrCameraScanner
+            onScan={(decodedText) => void executeFoodValidation(decodedText)}
+            scanEnabled={!validating}
+          />
+          {validating && (
+            <p role="status" className="mt-3 bg-blue-50 px-3 py-2 text-center text-xs font-bold text-blue-800">
+              Checking food coupon…
+            </p>
+          )}
         </div>
         <div className="min-w-0">
           <p className="eyebrow">Manual verification</p>
@@ -230,6 +245,7 @@ function FoodScannerContent() {
             <button
               key={num}
               onClick={() => handleKeypadPress(num)}
+              disabled={validating}
               className="keypad-btn"
             >
               {num}
@@ -237,6 +253,7 @@ function FoodScannerContent() {
           ))}
           <button
             onClick={handleClear}
+            disabled={validating}
             className="keypad-btn !text-[10px] !font-extrabold"
           >
             CLEAR
@@ -249,6 +266,7 @@ function FoodScannerContent() {
           </button>
           <button
             onClick={handleBackspace}
+            disabled={validating}
             className="keypad-btn !text-pink-700"
           >
             ⌫

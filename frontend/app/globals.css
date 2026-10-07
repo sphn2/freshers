@@ -90,6 +90,30 @@ textarea {
   color: var(--ink);
 }
 
+.scan-result-flash {
+  animation: scan-result-flash 420ms ease-out;
+}
+
+@keyframes scan-result-flash {
+  0% {
+    filter: brightness(1.8);
+    transform: scale(1.01);
+  }
+  35% {
+    filter: brightness(1.1);
+  }
+  100% {
+    filter: brightness(1);
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scan-result-flash {
+    animation: none;
+  }
+}
+
 .site-header {
   position: sticky;
   top: 0;

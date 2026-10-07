@@ -71,6 +71,13 @@ def test_gate_and_food_validation(client):
         "qr_token": ticket["qr_token"],
         "food_location": "Counter B",
     }
+    email_log_count = db.execute_one(
+        """SELECT COUNT(*) AS count FROM email_logs
+           WHERE template_name IN (
+               'emails/gate_validated.html',
+               'emails/food_validated.html'
+           )"""
+    )["count"]
     first_food = client.post(
         "/api/v1/validation/food", json=food_payload, headers=food_headers
     )
@@ -82,6 +89,13 @@ def test_gate_and_food_validation(client):
     )
     assert duplicate_food.status_code == 200
     assert duplicate_food.json["status"] == "FOOD_ALREADY_CLAIMED"
+    assert db.execute_one(
+        """SELECT COUNT(*) AS count FROM email_logs
+           WHERE template_name IN (
+               'emails/gate_validated.html',
+               'emails/food_validated.html'
+           )"""
+    )["count"] == email_log_count
 
 
 def test_event_manager_validation_is_limited_to_assigned_events(client):

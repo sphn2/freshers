@@ -438,6 +438,23 @@ class DatabaseManager:
         Executes atomic update (e.g., gate validation or food validation) and returns updated row.
         Guarantees single execution in concurrent environments.
         """
+        active_connection = getattr(self._transaction_local, "connection", None)
+        if active_connection is not None:
+            q = update_query.replace("::boolean", "").replace("%s", "?") if self.is_sqlite else update_query.replace("?", "%s")
+            cursor = (
+                active_connection.cursor()
+                if self.is_sqlite
+                else active_connection.cursor(cursor_factory=RealDictCursor)
+            )
+            try:
+                cursor.execute(q, params)
+                row = cursor.fetchone() if cursor.description else None
+                if row is None and cursor.rowcount == 0:
+                    return None
+                return dict(row) if row else True
+            finally:
+                cursor.close()
+
         if self.is_sqlite:
             with self._lock:
                 q = update_query.replace("::boolean", "").replace("%s", "?")
