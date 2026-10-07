@@ -26,6 +26,7 @@ function GateScannerContent() {
   const [inputCode, setInputCode] = useState<string>("");
   const [validating, setValidating] = useState<boolean>(false);
   const [result, setResult] = useState<ValidationResult | null>(null);
+  const [requestError, setRequestError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!result || typeof navigator.vibrate !== "function") return;
@@ -61,6 +62,7 @@ function GateScannerContent() {
   const handleClear = () => {
     setInputCode("");
     setResult(null);
+    setRequestError(null);
   };
 
   const handleBackspace = () => {
@@ -75,6 +77,7 @@ function GateScannerContent() {
     }
     setValidating(true);
     setResult(null);
+    setRequestError(null);
 
     try {
       const res = await api.validateGate({
@@ -86,10 +89,7 @@ function GateScannerContent() {
       setResult(res);
       setInputCode("");
     } catch (err: unknown) {
-      setResult({
-        status: "INVALID_TICKET",
-        message: errorMessage(err, "Invalid ticket or verification error."),
-      });
+      setRequestError(errorMessage(err, "Could not verify the ticket. Check the connection and retry."));
     } finally {
       setInputCode("");
       setValidating(false);
@@ -106,6 +106,11 @@ function GateScannerContent() {
       {!eventError && events.length === 0 && (
         <div className="p-3 bg-slate-50 border border-slate-200 text-slate-600 rounded-xl text-xs font-semibold">
           No gate-enabled events are available.
+        </div>
+      )}
+      {requestError && (
+        <div role="alert" className="border border-amber-300 bg-amber-50 p-4 text-sm font-semibold text-amber-950">
+          Verification could not be completed: {requestError} This does not confirm that the ticket is invalid. Retry when the scanner is connected.
         </div>
       )}
       {/* Header & Gate Selection */}

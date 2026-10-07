@@ -1,4 +1,5 @@
 import uuid
+import sqlite3
 
 import pytest
 
@@ -116,6 +117,44 @@ def test_gate_and_food_validation(client):
            )""",
         (f"gate.test.{unique_id}@sphoorthy.ac.in",),
     )["count"] == queued_email_count + 2
+
+
+def test_checkin_remains_valid_when_email_outbox_enqueue_fails(client, monkeypatch):
+    event = event_service.get_event_by_slug("freshers-2k26")
+    unique_id = str(uuid.uuid4())[:8]
+    registration = registration_service.register_student(RegistrationCreate(
+        event_id=event["id"],
+        full_name="Outbox Failure Tester",
+        roll_number=f"26N81O{unique_id}",
+        email=f"outbox.failure.{unique_id}@sphoorthy.ac.in",
+        phone="9876543219",
+        department="EEE",
+    ))
+    db.execute_write(
+        "UPDATE registrations SET status = 'PAID' WHERE id = %s",
+        (registration["id"],),
+    )
+    ticket = ticket_service.issue_ticket(registration["id"])
+
+    def fail_to_queue(**kwargs):
+        raise sqlite3.OperationalError("email_outbox table is unavailable")
+
+    monkeypatch.setattr(
+        "app.services.validation_service.email_service.enqueue_email",
+        fail_to_queue,
+    )
+    response = client.post(
+        "/api/v1/validation/gate",
+        json={"event_id": event["id"], "qr_token": ticket["qr_token"]},
+        headers={"Authorization": "Bearer test-token-GATE_STAFF"},
+    )
+
+    assert response.status_code == 200
+    assert response.json["status"] == "VALID"
+    assert db.execute_one(
+        "SELECT status FROM tickets WHERE id = %s",
+        (ticket["id"],),
+    )["status"] == "GATE_VALIDATED"
 
 
 def test_event_manager_validation_is_limited_to_assigned_events(client):

@@ -373,6 +373,28 @@ class DatabaseManager:
             else:
                 self._lock.release()
 
+    @contextmanager
+    def savepoint(self):
+        """Isolate optional database work while preserving its enclosing transaction."""
+        connection = getattr(self._transaction_local, "connection", None)
+        if connection is None:
+            raise RuntimeError("A savepoint requires an active database transaction.")
+
+        savepoint_name = f"sp_{uuid.uuid4().hex}"
+        cursor = connection.cursor()
+        try:
+            cursor.execute(f"SAVEPOINT {savepoint_name}")
+            try:
+                yield
+            except BaseException:
+                cursor.execute(f"ROLLBACK TO SAVEPOINT {savepoint_name}")
+                cursor.execute(f"RELEASE SAVEPOINT {savepoint_name}")
+                raise
+            else:
+                cursor.execute(f"RELEASE SAVEPOINT {savepoint_name}")
+        finally:
+            cursor.close()
+
     def execute_query(self, query: str, params: tuple = ()):
         """Executes a SELECT query and returns a list of dictionaries."""
         active_connection = getattr(self._transaction_local, "connection", None)

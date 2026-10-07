@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import logging
 
 from app.db import db
 from app.schemas.validation import (
@@ -10,6 +11,8 @@ from app.schemas.validation import (
 from app.services.audit_service import audit_service
 from app.services.email_service import email_service
 from app.utils.security import verify_signed_qr_token
+
+logger = logging.getLogger(__name__)
 
 
 def _clean_uuid(user_id: str | None) -> str | None:
@@ -52,6 +55,29 @@ def _ticket_lookup(req, lock: bool = False):
 
 
 class ValidationService:
+    @staticmethod
+    def _queue_notification(
+        recipient: str,
+        subject: str,
+        template_name: str,
+        context: dict,
+        ticket_id: str,
+    ) -> None:
+        try:
+            with db.savepoint():
+                email_service.enqueue_email(
+                    recipient=recipient,
+                    subject=subject,
+                    template_name=template_name,
+                    context=context,
+                )
+        except Exception:
+            logger.exception(
+                "Could not queue %s for ticket_id=%s; check-in remains valid.",
+                template_name,
+                ticket_id,
+            )
+
     @staticmethod
     def validate_gate(
         req: GateValidationRequest,
@@ -153,17 +179,18 @@ class ValidationService:
                     "method": "QR" if req.qr_token else "MANUAL",
                 },
             )
-            email_service.enqueue_email(
-                recipient=ticket["email"],
-                subject=f"Ticket Validated — {ticket['event_title']}",
-                template_name="emails/gate_validated.html",
-                context={
+            ValidationService._queue_notification(
+                ticket["email"],
+                f"Ticket Validated — {ticket['event_title']}",
+                "emails/gate_validated.html",
+                {
                     "student_name": ticket["student_name"],
                     "event_title": ticket["event_title"],
                     "ticket_code": ticket["ticket_code"],
                     "gate_location": req.gate_location,
                     "validated_at": now,
                 },
+                ticket["id"],
             )
             return GateValidationResponse(
                 status="VALID",
@@ -292,17 +319,18 @@ class ValidationService:
                     "counter": req.food_location,
                 },
             )
-            email_service.enqueue_email(
-                recipient=ticket["email"],
-                subject=f"Food Coupon Claimed — {ticket['event_title']}",
-                template_name="emails/food_validated.html",
-                context={
+            ValidationService._queue_notification(
+                ticket["email"],
+                f"Food Coupon Claimed — {ticket['event_title']}",
+                "emails/food_validated.html",
+                {
                     "student_name": ticket["student_name"],
                     "event_title": ticket["event_title"],
                     "ticket_code": ticket["ticket_code"],
                     "food_location": req.food_location,
                     "validated_at": now,
                 },
+                ticket["id"],
             )
             return FoodValidationResponse(
                 status="VALID",
