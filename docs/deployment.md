@@ -45,6 +45,10 @@ new `SECRET_KEY` and `TICKET_SECRET_KEY` values; do not copy local credentials:
 `SUPABASE_JWKS_URL`, `SUPABASE_SECRET_KEY`, Razorpay credentials, and SMTP
 credentials.
 
+For `SUPABASE_SECRET_KEY`, use the secret key from the same Supabase project
+as `SUPABASE_URL` (new keys start with `sb_secret_`; the legacy `service_role`
+JWT is also supported). Never use the frontend publishable/anon key here.
+
 **Frontend service (`frontend`)**
 
 ```env

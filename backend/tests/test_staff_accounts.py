@@ -1,5 +1,7 @@
 import uuid
 
+import pytest
+
 from app import create_app
 from app.config import config
 from app.db import db
@@ -15,7 +17,16 @@ class AuthAdminResponse:
         return {"id": self.user_id}
 
 
-def test_admin_creates_auth_user_and_assigns_staff_role(monkeypatch):
+@pytest.mark.parametrize(
+    ("secret_key", "expects_bearer"),
+    [
+        ("eyJ.legacy-service-role-test-key", True),
+        ("sb_secret_test-key", False),
+    ],
+)
+def test_admin_creates_auth_user_and_assigns_staff_role(
+    monkeypatch, secret_key, expects_bearer
+):
     app = create_app()
     user_id = str(uuid.uuid4())
     requests = []
@@ -25,7 +36,7 @@ def test_admin_creates_auth_user_and_assigns_staff_role(monkeypatch):
         return AuthAdminResponse(user_id)
 
     monkeypatch.setattr(config, "SUPABASE_URL", "https://example.supabase.co")
-    monkeypatch.setattr(config, "SUPABASE_SECRET_KEY", "server-only-test-secret")
+    monkeypatch.setattr(config, "SUPABASE_SECRET_KEY", secret_key)
     monkeypatch.setattr(
         "app.services.staff_account_service.requests.post",
         create_auth_user,
@@ -47,7 +58,11 @@ def test_admin_creates_auth_user_and_assigns_staff_role(monkeypatch):
     assert response.json["account"]["id"] == user_id
     assert len(requests) == 1
     assert requests[0][0] == "https://example.supabase.co/auth/v1/admin/users"
-    assert requests[0][1]["apikey"] == "server-only-test-secret"
+    assert requests[0][1]["apikey"] == secret_key
+    if expects_bearer:
+        assert requests[0][1]["Authorization"] == f"Bearer {secret_key}"
+    else:
+        assert "Authorization" not in requests[0][1]
     assert requests[0][2]["email_confirm"] is True
     profile = db.execute_one("SELECT email, full_name FROM profiles WHERE id = %s", (user_id,))
     assert profile == {"email": "gate.operator@example.com", "full_name": "Gate Operator"}

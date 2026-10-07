@@ -37,9 +37,10 @@ class StaffAccountService:
         auth_url = f"{config.SUPABASE_URL.rstrip('/')}/auth/v1/admin/users"
         headers = {
             "apikey": config.SUPABASE_SECRET_KEY,
-            "Authorization": f"Bearer {config.SUPABASE_SECRET_KEY}",
             "Content-Type": "application/json",
         }
+        if not config.SUPABASE_SECRET_KEY.startswith("sb_secret_"):
+            headers["Authorization"] = f"Bearer {config.SUPABASE_SECRET_KEY}"
         try:
             response = requests.post(
                 auth_url,
