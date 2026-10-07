@@ -8,6 +8,21 @@
 
 ## Step-by-Step Deployment
 
+### Vercel multi-service project
+Import the repository root as one Vercel project (do not set `backend/` or
+`frontend/` as the project root). The root `vercel.json` declares:
+
+- `backend`: Flask service rooted at `backend/`, publicly reached through
+  `/api/*`.
+- `frontend`: Next.js service rooted at `frontend/`, publicly reached through
+  all remaining paths.
+
+The browser calls the backend through the same-origin `/api/v1` path; Vercel's
+top-level rewrite routes those requests to the backend service. No inter-service
+binding is needed because the frontend does not make a server-to-server call to
+the backend. Local `npm run dev` continues to use the Next.js rewrite and
+`BACKEND_API_URL`; that development proxy is disabled on Vercel.
+
 ### 1. Database Setup (Supabase)
 1. Create a new Supabase Project.
 2. In the Supabase SQL Editor, run `migrations/001_initial_schema.sql`.
@@ -28,9 +43,12 @@ intended database through the Supabase SQL Editor or your established
 migration workflow; do not deploy the updated backend before this migration is
 applied.
 
-### 2. Backend Deployment (Vercel)
-1. Deploy `backend/` to Vercel or run `gunicorn wsgi:app`.
-2. Configure production environment variables in Vercel: `FLASK_ENV=production`,
+### 2. Backend Service Environment
+1. The backend is built as the `backend` service by the root Vercel project
+   configuration. For non-Vercel hosting, run `gunicorn wsgi:app` from
+   `backend/`.
+2. Configure these production environment variables for the backend service:
+   `FLASK_ENV=production`,
    `USE_SQLITE=false`, `DATABASE_URL`, `SECRET_KEY`, `TICKET_SECRET_KEY`,
    `SUPABASE_URL`, `SUPABASE_JWKS_URL`, `SUPABASE_SECRET_KEY`, `RAZORPAY_KEY_ID`,
    `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`, `SMTP_USERNAME`,
@@ -41,13 +59,14 @@ applied.
    variable.
 
 ### 3. Frontend Deployment (Vercel)
-1. Deploy `frontend/` to Vercel.
-2. Set `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_SUPABASE_URL`, and
-   `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`. Never add Supabase secret/service
-   role keys or Razorpay secrets to `NEXT_PUBLIC_*` variables.
+1. The frontend is built as the `frontend` service by the root Vercel project
+   configuration. Configure `NEXT_PUBLIC_API_URL=/api/v1`,
+   `NEXT_PUBLIC_SUPABASE_URL`, and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`.
+   Never add Supabase secret/service role keys or Razorpay secrets to
+   `NEXT_PUBLIC_*` variables.
 
 ### 4. Razorpay Webhook Configuration
 1. Open Razorpay Dashboard -> Settings -> Webhooks.
-2. Add Webhook URL: `https://<your-backend-domain>/api/v1/webhooks/razorpay`.
+2. Add Webhook URL: `https://<your-domain>/api/v1/webhooks/razorpay`.
 3. Events to select: `payment.captured` and `payment.failed`.
 4. Copy Webhook Secret to `RAZORPAY_WEBHOOK_SECRET`.

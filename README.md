@@ -137,13 +137,16 @@ Tests cover:
 1. **Database**: Apply migrations `001` through `006` in order to the intended
    Supabase/Postgres database. Migrations `005` and `006` are required for
    registration controls, public guest checkout, and tiered pricing.
-2. **Backend**: Deploy `backend/` and configure its server-only environment
-   variables, including the database, Supabase Auth, Razorpay, SMTP, and
-   application secrets.
-3. **Frontend**: Deploy `frontend/` with the public Supabase URL/publishable
-   key and the appropriate API configuration. Do not expose any server secret.
+2. **Vercel project**: Import the repository with the repository root as the
+   project root. The root [`vercel.json`](vercel.json) defines separate
+   `backend` (Flask) and `frontend` (Next.js) services. It routes `/api/*` to
+   the backend and all other public paths to the frontend.
+3. **Environment variables**: Configure backend-only database, Supabase Auth,
+   Razorpay, SMTP, and application secrets in Vercel. Configure the frontend's
+   public Supabase URL/publishable key and set `NEXT_PUBLIC_API_URL=/api/v1`.
+   Never expose server secrets through `NEXT_PUBLIC_*`.
 4. **Payments and email**: Set the Razorpay webhook to
-   `https://<backend-domain>/api/v1/webhooks/razorpay` and configure working
+   `https://<your-domain>/api/v1/webhooks/razorpay` and configure working
    SMTP credentials for checkout and ticket emails.
 
 See [docs/deployment.md](docs/deployment.md), [docs/security.md](docs/security.md),
