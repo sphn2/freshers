@@ -199,12 +199,8 @@ textarea {
 }
 
 .site-footer {
-  width: min(1240px, calc(100% - 48px));
-  margin: 0 auto;
-  padding: 22px 0 30px;
-  border-top: 1px solid var(--line);
-  color: #817764;
-  font-size: 11px;
+  width: 100%;
+  margin-top: auto;
 }
 
 .eyebrow {
@@ -522,8 +518,7 @@ textarea {
 
 @media (max-width: 760px) {
   .site-header-inner,
-  .site-main,
-  .site-footer {
+  .site-main {
     width: min(100% - 28px, 1240px);
   }
 
