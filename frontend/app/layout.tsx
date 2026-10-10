@@ -19,7 +19,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Sphoorthy Events",
+    title: "Rudvay Events",
   },
   icons: {
     icon: "/icon-192.png",

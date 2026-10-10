@@ -2,10 +2,10 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Sphoorthy Events — Operations Portal",
-    short_name: "Sphoorthy Events",
-    description: "Official campus event calendar, ticket scanner, food desk, and management app for Sphoorthy Engineering College.",
-    start_url: "/",
+    name: "Rudvay Events — Staff Portal",
+    short_name: "Rudvay Events",
+    description: "Official staff login, gate scanner, food desk, and management app powered by Rudvay Tech.",
+    start_url: "/auth/login",
     display: "standalone",
     background_color: "#17221e",
     theme_color: "#17221e",
