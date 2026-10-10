@@ -75,14 +75,15 @@ export default function DigitalTicketPage() {
       <div className="ticket-pass panel relative overflow-hidden">
         {/* Ticket Header */}
         <div className="relative border-b border-slate-200 bg-[#17221e] p-6 text-center text-white">
-          <p className="eyebrow !text-[#e5c86f]">Sphoorthy campus events</p>
-          <div className="mt-3 flex items-center justify-center gap-2 text-[9px] font-extrabold uppercase tracking-[.2em] text-white/70">
+          <div className="mx-auto mb-3 w-fit rounded-lg bg-white/95 p-1.5 shadow-md">
+            <img src="/college_logo.png" alt="Sphoorthy Engineering College" className="h-8 sm:h-9 w-auto object-contain" />
+          </div>
+          <div className="flex items-center justify-center gap-2 text-[9px] font-extrabold uppercase tracking-[.2em] text-white/70">
             <TicketCheck className="h-3.5 w-3.5 text-[#e5c86f]" /> Official entry pass
           </div>
           <h1 className="editorial-title mt-2 text-3xl leading-tight">
             {ticket.event_title}
           </h1>
-          <p className="mt-2 text-[11px] text-white/60">Sphoorthy Engineering College</p>
         </div>
 
         <div className="space-y-6 p-5 md:p-7">

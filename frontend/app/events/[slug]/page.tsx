@@ -8,6 +8,7 @@ import type { Event } from "@/lib/types";
 import { registrationAvailability } from "@/lib/registration";
 import { ArrowLeft, ArrowRight, CalendarDays, Check, CircleAlert, MapPin, ShieldCheck, Ticket, UserRoundCheck } from "lucide-react";
 import Link from "next/link";
+import RulesModal from "@/components/RulesModal";
 
 export default function EventRegistrationPage() {
   const { slug } = useParams<{ slug: string }>();
@@ -22,6 +23,7 @@ export default function EventRegistrationPage() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [department, setDepartment] = useState("CSE");
+  const [showRulesModal, setShowRulesModal] = useState(false);
   const college = "Sphoorthy Engineering College";
 
   useEffect(() => {
@@ -37,11 +39,18 @@ export default function EventRegistrationPage() {
     void load();
   }, [slug]);
 
-  const handleSubmit = async (formEvent: React.FormEvent) => {
+  // Step 1: When student clicks Form Submit, trigger the Rules Modal
+  const handleFormSubmit = (formEvent: React.FormEvent) => {
     formEvent.preventDefault();
     if (!event || !registrationAvailability(event).open) return;
     setError(null);
     setNotice(null);
+    setShowRulesModal(true);
+  };
+
+  // Step 2: When student accepts Rules Modal & clicks "I AGREE & PROCEED TO PAYMENT"
+  const handleConfirmRulesAndRegister = async () => {
+    if (!event || !registrationAvailability(event).open) return;
     setSubmitting(true);
     try {
       const response = await api.registerStudent(event.id, {
@@ -54,6 +63,7 @@ export default function EventRegistrationPage() {
       });
       const registration = response.registration;
       if (response.existing_pending) {
+        setShowRulesModal(false);
         setNotice("A payment link for your existing pending registration has been sent to your email.");
         return;
       }
@@ -75,6 +85,7 @@ export default function EventRegistrationPage() {
       }
     } catch (err: unknown) {
       setError(errorMessage(err, "Registration failed. Please try again."));
+      setShowRulesModal(false);
     } finally {
       setSubmitting(false);
     }
@@ -98,16 +109,20 @@ export default function EventRegistrationPage() {
     : normalizedRollNumber.startsWith("25")
       ? event.second_year_ticket_price
       : event.other_ticket_price;
+
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <Link href="/" className="inline-flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-[.13em] text-slate-600 hover:text-pink-700">
         <ArrowLeft className="h-3.5 w-3.5" /> Campus calendar
       </Link>
 
-      <section className="page-hero surface-grid grid gap-8 p-7 md:grid-cols-[1fr_260px] md:p-10">
+      <section className="page-hero surface-grid grid gap-8 p-7 md:grid-cols-[1fr_280px] md:p-10">
         <div className="relative z-10">
+          <div className="bg-white/95 p-2 rounded-lg w-fit mb-4 shadow-md">
+            <img src="/college_logo.png" alt="Sphoorthy Engineering College" className="h-10 w-auto object-contain" />
+          </div>
           <p className="eyebrow !text-[#e5c86f]">{event.event_type} · campus event</p>
-          <h1 className="editorial-title mt-4 max-w-3xl text-4xl md:text-6xl">{event.title}</h1>
+          <h1 className="editorial-title mt-3 max-w-3xl text-4xl md:text-6xl">{event.title}</h1>
           <p className="mt-4 max-w-2xl text-sm leading-7 text-[#e1ded3]">{event.description || "An event from the Sphoorthy campus community."}</p>
           <div className="mt-7 flex flex-wrap gap-x-6 gap-y-3 text-xs font-semibold text-[#e3dece]">
             <span className="flex items-center gap-2"><CalendarDays className="h-4 w-4 text-[#e5c86f]" />{new Date(event.start_time).toLocaleString([], { dateStyle: "full", timeStyle: "short" })}</span>
@@ -136,6 +151,9 @@ export default function EventRegistrationPage() {
 
       <div className="grid items-start gap-5 lg:grid-cols-[.72fr_1.28fr]">
         <aside className="panel p-6 md:p-7">
+          <div className="mb-5 overflow-hidden rounded-lg border border-slate-200 shadow-sm">
+            <img src="/udbhav_poster.jpg" alt="Official Event Poster" className="w-full h-auto object-cover" />
+          </div>
           <p className="eyebrow">Before you book</p>
           <h2 className="editorial-title mt-3 text-2xl">Your place, made official.</h2>
           <ul className="mt-6 space-y-4 text-xs leading-5 text-slate-600">
@@ -164,7 +182,7 @@ export default function EventRegistrationPage() {
               <Link href="/" className="button-primary mt-5 w-fit !min-h-10 !px-4 !text-[11px]">Explore other events <ArrowRight className="h-3.5 w-3.5" /></Link>
             </div>
           ) : (
-            <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+            <form onSubmit={handleFormSubmit} className="mt-6 space-y-4">
               {error && <div role="alert" className="flex items-center gap-2 border border-rose-300 bg-rose-50 p-3 text-xs font-semibold text-rose-800"><CircleAlert className="h-4 w-4 shrink-0" />{error}</div>}
               {notice && <div role="status" className="border border-emerald-300 bg-emerald-50 p-3 text-xs font-semibold text-emerald-800">{notice}</div>}
               <div>
@@ -198,6 +216,14 @@ export default function EventRegistrationPage() {
           )}
         </section>
       </div>
+
+      {/* Rules and Regulations Popup Modal */}
+      <RulesModal
+        isOpen={showRulesModal}
+        onClose={() => setShowRulesModal(false)}
+        onConfirm={handleConfirmRulesAndRegister}
+        submitting={submitting}
+      />
     </div>
   );
 }

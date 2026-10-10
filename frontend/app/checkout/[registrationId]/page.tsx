@@ -5,7 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { errorMessage } from "@/lib/types";
 import type { PaymentOrder } from "@/lib/types";
-import { CreditCard, ShieldCheck, AlertCircle, Loader2, Ticket } from "lucide-react";
+import { CreditCard, ShieldCheck, AlertCircle, Loader2, Ticket, FileText } from "lucide-react";
+import RulesModal from "@/components/RulesModal";
 
 interface RazorpaySuccessResponse {
   razorpay_payment_id: string;
@@ -78,6 +79,7 @@ export default function PaymentCheckoutPage() {
   const [error, setError] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [registrationToken, setRegistrationToken] = useState<string | undefined>();
+  const [showRulesModal, setShowRulesModal] = useState(false);
 
   useEffect(() => {
     async function initCheckout() {
@@ -107,12 +109,19 @@ export default function PaymentCheckoutPage() {
     initCheckout();
   }, [registrationId, router]);
 
-  const handleRazorpayPayment = async () => {
-    setError(null);
+  const handleOpenRulesModal = () => {
     if (!order) {
       setError("Payment order is unavailable. Please refresh and try again.");
       return;
     }
+    setError(null);
+    setShowRulesModal(true);
+  };
+
+  const handleProceedToRazorpay = async () => {
+    setShowRulesModal(false);
+    setError(null);
+    if (!order) return;
     setProcessing(true);
 
     try {
@@ -131,7 +140,7 @@ export default function PaymentCheckoutPage() {
           amount: Math.round(order.amount * 100),
           currency: order.currency || "INR",
           name: "Sphoorthy Events",
-          description: "Event Registration Ticket",
+          description: "Fresher's Party Entry Ticket",
           order_id: order.order_id,
           handler: async function (response: {
             razorpay_payment_id: string;
@@ -194,7 +203,7 @@ export default function PaymentCheckoutPage() {
   if (loading) {
     return (
       <div className="p-8 text-center text-slate-400 font-medium flex items-center justify-center gap-2">
-        <Loader2 className="w-5 h-5 animate-spin text-pink-600" />
+        <Loader2 className="w-5 h-5 animate-spin text-[#d3a52b]" />
         <span>Initializing Razorpay Gateway...</span>
       </div>
     );
@@ -213,7 +222,7 @@ export default function PaymentCheckoutPage() {
 
       <div className="panel space-y-5 p-5 md:p-7">
         <div className="flex items-center gap-2 border-b border-slate-200 pb-4 text-xs font-bold uppercase tracking-[.1em] text-slate-700">
-          <ShieldCheck className="h-4 w-4 text-blue-700" />
+          <ShieldCheck className="h-4 w-4 text-emerald-700" />
           Razorpay secure checkout
         </div>
 
@@ -247,27 +256,39 @@ export default function PaymentCheckoutPage() {
           </div>
           <div className="flex justify-between border-t border-slate-200 pt-3 text-sm">
             <span className="text-slate-900 font-bold">Total amount</span>
-            <span className="metric-value text-xl text-blue-700">₹{order?.amount} INR</span>
+            <span className="metric-value text-xl text-amber-700">₹{order?.amount} INR</span>
           </div>
         </div>
 
         {/* What You Get */}
-        <div className="border border-amber-200 bg-amber-50/70 p-4">
+        <div className="border border-amber-200 bg-amber-50/70 p-4 rounded-lg">
           <div className="flex items-center gap-2 text-xs text-yellow-900 font-bold mb-1.5">
             <Ticket className="w-4 h-4 text-yellow-700" />
-            <span>Ticket Pass Inclusion:</span>
+            <span>Ticket Pass Inclusion & Event Rules:</span>
           </div>
           <ul className="text-xs text-yellow-800 space-y-1 pl-6 list-disc font-medium">
-            <li>Official digital event ticket</li>
+            <li>Official digital event ticket pass</li>
             <li>Opaque QR code for gate scanning</li>
             <li>6-digit manual fallback entry code</li>
-            <li>Confirmation email with gate instructions</li>
+            <li>Subject to Sphoorthy Freshers Party Rules & Regulations</li>
           </ul>
+        </div>
+
+        {/* View Rules button link */}
+        <div className="text-center">
+          <button
+            type="button"
+            onClick={handleOpenRulesModal}
+            className="inline-flex items-center gap-1.5 text-xs text-amber-800 font-bold hover:underline"
+          >
+            <FileText className="h-3.5 w-3.5 text-amber-600" />
+            Review Fresher's Party Rules and Regulations
+          </button>
         </div>
 
         {/* Pay Button */}
         <button
-          onClick={handleRazorpayPayment}
+          onClick={handleOpenRulesModal}
           disabled={processing || !order}
           className="button-primary button-accent w-full !min-h-[54px] disabled:cursor-not-allowed disabled:opacity-50"
         >
@@ -279,15 +300,22 @@ export default function PaymentCheckoutPage() {
           ) : (
             <>
               <ShieldCheck className="w-5 h-5" />
-              <span>Pay ₹{order?.amount} via Razorpay</span>
+              <span>Review Rules & Pay ₹{order?.amount} via Razorpay</span>
             </>
           )}
         </button>
 
         <p className="text-center text-[10px] leading-5 text-slate-500">
-          Payment details are processed by Razorpay. The server verifies the payment signature before issuing a ticket.
+          Payment details are processed by Razorpay. By clicking pay, you agree to the event rules.
         </p>
       </div>
+
+      <RulesModal
+        isOpen={showRulesModal}
+        onClose={() => setShowRulesModal(false)}
+        onConfirm={handleProceedToRazorpay}
+        submitting={processing}
+      />
     </div>
   );
 }
