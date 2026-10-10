@@ -33,6 +33,8 @@ class StaffAccountService:
                 raise StaffAccountError("The selected event does not exist.", 404)
         elif data.event_id:
             raise StaffAccountError("Only event managers can be assigned to an event.")
+        if db.execute_one("SELECT id FROM profiles WHERE LOWER(email) = %s", (data.email.lower(),)):
+            raise StaffAccountError("A staff account with this email address already exists.", 409)
 
         auth_url = f"{config.SUPABASE_URL.rstrip('/')}/auth/v1/admin/users"
         headers = {
