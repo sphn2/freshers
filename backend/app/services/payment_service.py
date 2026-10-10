@@ -15,6 +15,9 @@ from app.services.email_service import email_service
 from app.utils.payment_access import create_access_token
 
 
+from app.services.system_settings_service import system_settings_service
+
+
 class PaymentService:
     @staticmethod
     def _get_razorpay_client():
@@ -41,14 +44,31 @@ class PaymentService:
         if reg["status"] != "PENDING_PAYMENT":
             raise ValueError("This registration cannot be paid online.")
 
+        ticket_price = float(reg["ticket_price"])
+        fee_settings = system_settings_service.get_convenience_fee_settings()
+        fee_enabled = fee_settings["enabled"]
+        fee_amount = float(fee_settings["amount"]) if fee_enabled else 0.0
+        total_amount = round(ticket_price + fee_amount, 2)
+
         existing = db.execute_one(
             "SELECT * FROM payments WHERE registration_id = %s AND status = 'CREATED' ORDER BY created_at DESC",
             (registration_id,),
         )
         if existing:
-            return {"order_id": existing["razorpay_order_id"], "amount": float(existing["amount"]), "currency": "INR", "key_id": config.RAZORPAY_KEY_ID, "registration_id": registration_id}
+            existing_amount = float(existing["amount"])
+            calc_fee = round(existing_amount - ticket_price, 2) if existing_amount > ticket_price else 0.0
+            return {
+                "order_id": existing["razorpay_order_id"],
+                "amount": existing_amount,
+                "ticket_price": ticket_price,
+                "convenience_fee": calc_fee,
+                "convenience_fee_enabled": calc_fee > 0,
+                "currency": "INR",
+                "key_id": config.RAZORPAY_KEY_ID,
+                "registration_id": registration_id,
+            }
 
-        amount_in_paise = int(round(float(reg["ticket_price"]) * 100))
+        amount_in_paise = int(round(total_amount * 100))
         if current_app.config.get("TESTING"):
             order_id = f"order_test_{uuid.uuid4().hex[:12]}"
         else:
@@ -68,9 +88,18 @@ class PaymentService:
         db.execute_write(
             """INSERT INTO payments (id, registration_id, razorpay_order_id, amount, currency, status, payment_method, created_at, updated_at)
                VALUES (%s, %s, %s, %s, 'INR', 'CREATED', 'RAZORPAY', %s, %s)""",
-            (str(uuid.uuid4()), registration_id, order_id, float(reg["ticket_price"]), now, now),
+            (str(uuid.uuid4()), registration_id, order_id, total_amount, now, now),
         )
-        return {"order_id": order_id, "amount": float(reg["ticket_price"]), "currency": "INR", "key_id": config.RAZORPAY_KEY_ID, "registration_id": registration_id}
+        return {
+            "order_id": order_id,
+            "amount": total_amount,
+            "ticket_price": ticket_price,
+            "convenience_fee": fee_amount,
+            "convenience_fee_enabled": fee_enabled,
+            "currency": "INR",
+            "key_id": config.RAZORPAY_KEY_ID,
+            "registration_id": registration_id,
+        }
 
     @staticmethod
     def verify_payment(registration_id: str, razorpay_order_id: str, razorpay_payment_id: str, razorpay_signature: str):

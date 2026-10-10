@@ -18,7 +18,7 @@ import {
   LayoutDashboard, ShieldCheck, DollarSign, Users, Ticket, Activity,
   FileSpreadsheet, Plus, RefreshCw, CheckCircle2, QrCode,
   CreditCard, Banknote, Settings, AlertCircle, Pause, Play, CalendarClock,
-  UserRoundPlus, KeyRound
+  UserRoundPlus, KeyRound, Mail, Edit3, Search, X
 } from "lucide-react";
 
 export default function AdminDashboardPage() {
@@ -62,11 +62,21 @@ function AdminDashboardContent() {
   });
   const [savingPrices, setSavingPrices] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [editingFullEventId, setEditingFullEventId] = useState<string | null>(null);
+  const [editEventForm, setEditEventForm] = useState<EventCreateInput>({
+    title: "", slug: "", description: "", venue: "", event_type: "CULTURAL",
+    start_time: "", end_time: "", registration_start: "", registration_end: "",
+    capacity: 500, ticket_price: 250, allow_online: true, allow_offline: true,
+    allow_autofill: true, first_year_ticket_price: 500, second_year_ticket_price: 600,
+    other_ticket_price: null, gate_validation_enabled: true, food_validation_enabled: true, status: "DRAFT"
+  });
+  const [savingFullEvent, setSavingFullEvent] = useState(false);
+
   const [staffForm, setStaffForm] = useState({
     full_name: "",
     email: "",
     password: "",
-    role: "GATE_STAFF" as "EVENT_MANAGER" | "GATE_STAFF" | "FOOD_STAFF",
+    role: "GATE_STAFF" as "ADMIN" | "EVENT_MANAGER" | "GATE_STAFF" | "FOOD_STAFF" | "OFFLINE_COLLECTOR",
     event_id: "",
   });
   const [creatingStaff, setCreatingStaff] = useState(false);
@@ -77,6 +87,132 @@ function AdminDashboardContent() {
   const [pinInputValue, setPinInputValue] = useState("");
   const [settingPin, setSettingPin] = useState(false);
   const [togglingRoleId, setTogglingRoleId] = useState<string | null>(null);
+  const [editingEmailRegId, setEditingEmailRegId] = useState<string | null>(null);
+  const [emailDraft, setEmailDraft] = useState<string>("");
+  const [savingEmail, setSavingEmail] = useState<boolean>(false);
+  const [resendingTicketId, setResendingTicketId] = useState<string | null>(null);
+  const [resendingAll, setResendingAll] = useState<boolean>(false);
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [feeSettings, setFeeSettings] = useState<{ enabled: boolean; amount: number } | null>(null);
+  const [feeAmountDraft, setFeeAmountDraft] = useState<string>("3.79");
+  const [feeEnabledDraft, setFeeEnabledDraft] = useState<boolean>(true);
+  const [savingFeeSettings, setSavingFeeSettings] = useState<boolean>(false);
+
+  const loadFeeSettings = async () => {
+    if (!isSuperAdmin) return;
+    try {
+      const data = await api.getConvenienceFeeSettings();
+      setFeeSettings(data);
+      setFeeEnabledDraft(data.enabled);
+      setFeeAmountDraft(String(data.amount));
+    } catch {
+      // silent
+    }
+  };
+
+  useEffect(() => {
+    if (isSuperAdmin) void loadFeeSettings();
+  }, [isSuperAdmin]);
+
+  const handleSaveFeeSettings = async (overrideEnabled?: boolean) => {
+    if (!isSuperAdmin) return;
+    const nextEnabled = overrideEnabled !== undefined ? overrideEnabled : feeEnabledDraft;
+    const numAmount = parseFloat(feeAmountDraft);
+    if (isNaN(numAmount) || numAmount < 0) {
+      setStatusMsg("❌ Please enter a valid fee amount.");
+      return;
+    }
+    setSavingFeeSettings(true);
+    try {
+      const res = await api.updateConvenienceFeeSettings({
+        enabled: nextEnabled,
+        amount: numAmount,
+      });
+      setFeeSettings(res.settings);
+      setFeeEnabledDraft(res.settings.enabled);
+      setFeeAmountDraft(String(res.settings.amount));
+      setStatusMsg(`✅ ${res.message}`);
+    } catch (err: unknown) {
+      setStatusMsg(`❌ ${errorMessage(err, "Could not update GST & Convenience fee settings.")}`);
+      void loadFeeSettings();
+    } finally {
+      setSavingFeeSettings(false);
+    }
+  };
+
+  const filteredReportData = reportData.filter((row) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase().trim();
+    return Object.values(row).some((val) => {
+      if (val === null || val === undefined) return false;
+      if (typeof val === "object") {
+        return JSON.stringify(val).toLowerCase().includes(q);
+      }
+      return String(val).toLowerCase().includes(q);
+    });
+  });
+
+  const handleSaveRegistrationEmail = async (registrationId: string) => {
+    if (!emailDraft || !emailDraft.includes("@") || !emailDraft.includes(".")) {
+      setStatusMsg("❌ Please enter a valid email address.");
+      return;
+    }
+    setSavingEmail(true);
+    try {
+      const res = await api.updateRegistrationEmail(registrationId, emailDraft);
+      setStatusMsg(`✅ ${res.message}`);
+      setEditingEmailRegId(null);
+      setEmailDraft("");
+      void loadReport("registrations");
+    } catch (err: unknown) {
+      setStatusMsg(`❌ ${errorMessage(err, "Failed updating registration email.")}`);
+    } finally {
+      setSavingEmail(false);
+    }
+  };
+
+  const handleResendTicketEmail = async (registrationId: string) => {
+    setResendingTicketId(registrationId);
+    try {
+      const res = await api.resendTicketEmail(registrationId);
+      setStatusMsg(`✅ ${res.message}`);
+    } catch (err: unknown) {
+      setStatusMsg(`❌ ${errorMessage(err, "Failed resending ticket email.")}`);
+    } finally {
+      setResendingTicketId(null);
+    }
+  };
+
+  const handleResendMail = async (
+    registrationId: string,
+    mailType: "TICKET" | "PAYMENT" | "GATE" | "FOOD" | "ALL"
+  ) => {
+    const key = `${registrationId}-${mailType}`;
+    setResendingTicketId(key);
+    try {
+      const res = await api.resendAnyMail(registrationId, mailType);
+      setStatusMsg(`✅ ${res.message}`);
+    } catch (err: unknown) {
+      setStatusMsg(`❌ ${errorMessage(err, "Failed resending email.")}`);
+    } finally {
+      setResendingTicketId(null);
+    }
+  };
+
+  const handleResendAllTickets = async () => {
+    if (!window.confirm("Are you sure you want to resend ticket pass emails to ALL participants?")) {
+      return;
+    }
+    setResendingAll(true);
+    try {
+      const res = await api.resendAllTickets(selectedEventId || undefined);
+      setStatusMsg(`✅ ${res.message}`);
+    } catch (err: unknown) {
+      setStatusMsg(`❌ ${errorMessage(err, "Failed resending ticket emails to all participants.")}`);
+    } finally {
+      setResendingAll(false);
+    }
+  };
 
   const handleTogglePrivilege = async (account: StaffAccount, roleName: string, currentlyEnabled: boolean) => {
     if (!isSuperAdmin) return;
@@ -131,28 +267,27 @@ function AdminDashboardContent() {
   const loadDashboard = async (requestedEventId = selectedEventId) => {
     setLoading(true);
     try {
-      const eventData = await api.adminListEvents();
-      setEvents(eventData.events);
-      let eventId = requestedEventId;
-      if (role === "EVENT_MANAGER" && !eventId) {
-        eventId = eventData.events[0]?.id || "";
-        if (eventId) setSelectedEventId(eventId);
-      }
-      if (role === "EVENT_MANAGER" && !eventId) {
-        setMetrics(null);
-        setAuditLogs([]);
-        setStatusMsg("No events are assigned to your account.");
-        return;
-      }
       if (isAdmin) {
-        const [mData, logsData] = await Promise.all([
-          api.getAdminMetrics(eventId || undefined),
+        const [eventData, mData, logsData] = await Promise.all([
+          api.adminListEvents(),
+          api.getAdminMetrics(requestedEventId || undefined),
           api.getAuditLogs(20),
         ]);
+        setEvents(eventData.events);
         setMetrics(mData);
         setAuditLogs(logsData.audit_logs);
       } else {
-        const mData = await api.getAdminMetrics(eventId || undefined);
+        const eventData = await api.adminListEvents();
+        setEvents(eventData.events);
+        let eventId = requestedEventId || eventData.events[0]?.id || "";
+        if (eventId && !selectedEventId) setSelectedEventId(eventId);
+        if (!eventId) {
+          setMetrics(null);
+          setAuditLogs([]);
+          setStatusMsg("No events are assigned to your account.");
+          return;
+        }
+        const mData = await api.getAdminMetrics(eventId);
         setMetrics(mData);
         setAuditLogs([]);
       }
@@ -231,6 +366,63 @@ function AdminDashboardContent() {
       setStatusMsg(`❌ ${errorMessage(err, "Failed creating event.")}`);
     } finally {
       setCreating(false);
+    }
+  };
+  const toDatetimeLocal = (isoStr: string | null | undefined): string => {
+    if (!isoStr) return "";
+    const d = new Date(isoStr);
+    if (Number.isNaN(d.getTime())) return "";
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  const handleOpenEditEventModal = (ev: Event) => {
+    setEditingFullEventId(ev.id);
+    setEditEventForm({
+      title: ev.title || "",
+      slug: ev.slug || "",
+      description: ev.description || "",
+      venue: ev.venue || "",
+      event_type: ev.event_type || "CULTURAL",
+      start_time: toDatetimeLocal(ev.start_time),
+      end_time: toDatetimeLocal(ev.end_time),
+      registration_start: toDatetimeLocal(ev.registration_start),
+      registration_end: toDatetimeLocal(ev.registration_end),
+      capacity: ev.capacity || 500,
+      ticket_price: ev.ticket_price || 0,
+      first_year_ticket_price: ev.first_year_ticket_price ?? 500,
+      second_year_ticket_price: ev.second_year_ticket_price ?? 600,
+      other_ticket_price: ev.other_ticket_price ?? null,
+      allow_online: ev.allow_online ?? true,
+      allow_offline: ev.allow_offline ?? true,
+      allow_autofill: ev.allow_autofill ?? true,
+      gate_validation_enabled: ev.gate_validation_enabled ?? true,
+      food_validation_enabled: ev.food_validation_enabled ?? true,
+      status: ev.status || "DRAFT",
+    });
+  };
+
+  const handleSaveFullEvent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingFullEventId) return;
+    setSavingFullEvent(true);
+    setStatusMsg(null);
+    try {
+      const payload = {
+        ...editEventForm,
+        start_time: editEventForm.start_time ? new Date(editEventForm.start_time).toISOString() : "",
+        end_time: editEventForm.end_time ? new Date(editEventForm.end_time).toISOString() : "",
+        registration_start: editEventForm.registration_start ? new Date(editEventForm.registration_start).toISOString() : "",
+        registration_end: editEventForm.registration_end ? new Date(editEventForm.registration_end).toISOString() : "",
+      };
+      await api.updateEvent(editingFullEventId, payload);
+      setStatusMsg("✅ Event details updated successfully!");
+      setEditingFullEventId(null);
+      await loadEvents();
+    } catch (err: unknown) {
+      setStatusMsg(`❌ ${errorMessage(err, "Failed updating event details.")}`);
+    } finally {
+      setSavingFullEvent(false);
     }
   };
 
@@ -361,7 +553,7 @@ function AdminDashboardContent() {
   ];
   const visibleTabs = isAdmin
     ? tabs
-    : tabs.filter((tab) => tab.key !== "audit" && tab.key !== "accounts");
+    : tabs.filter((tab) => tab.key !== "audit" && tab.key !== "accounts" && tab.key !== "events");
 
   if (loading) {
     return (
@@ -485,6 +677,82 @@ function AdminDashboardContent() {
               <div className="text-2xl font-black text-slate-900 mt-1">{metrics?.total_tickets || 0}</div>
             </div>
           </div>
+
+          {/* GST & Convenience Fee Settings Panel (SUPER ADMIN ONLY) */}
+          {isSuperAdmin && (
+            <div className="panel space-y-4 p-5 md:p-6 bg-gradient-to-br from-amber-50/80 to-orange-50/50 border border-amber-200 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-200/80 pb-3">
+                <div className="flex items-center gap-2 text-amber-950">
+                  <CreditCard className="h-5 w-5 text-amber-700 shrink-0" />
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">GST & Convenience Fee Control (Super Admin)</h3>
+                    <p className="text-[11px] text-amber-800">
+                      Enable or disable transaction fee at checkout and configure fee amount.
+                    </p>
+                  </div>
+                </div>
+                <span
+                  className={`px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider rounded-full border ${
+                    feeEnabledDraft
+                      ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                      : "bg-slate-100 text-slate-600 border-slate-300"
+                  }`}
+                >
+                  {feeEnabledDraft ? "FEE ENABLED AT CHECKOUT" : "FEE DISABLED"}
+                </span>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2 items-center">
+                <div className="flex items-center justify-between gap-4 bg-white p-3.5 rounded-xl border border-amber-200/80 shadow-2xs">
+                  <div>
+                    <div className="text-xs font-bold text-slate-900">Enable Fee at Checkout</div>
+                    <p className="text-[10px] text-slate-500">Collects fee on online transactions</p>
+                  </div>
+                  <label htmlFor="toggle-convenience-fee" className="relative inline-flex cursor-pointer items-center">
+                    <input
+                      id="toggle-convenience-fee"
+                      type="checkbox"
+                      checked={feeEnabledDraft}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setFeeEnabledDraft(checked);
+                        void handleSaveFeeSettings(checked);
+                      }}
+                      className="sr-only peer"
+                    />
+                    <div className="h-6 w-11 rounded-full bg-slate-300 peer-checked:bg-amber-600 peer-focus:outline-none transition-colors duration-200 ease-in-out after:absolute after:top-[2px] after:left-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all after:content-[''] peer-checked:after:translate-x-full" />
+                  </label>
+                </div>
+
+                <div className="bg-white p-3.5 rounded-xl border border-amber-200/80 shadow-2xs space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <label htmlFor="fee-amount-input" className="font-bold text-slate-900">Fee Amount (₹)</label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="fee-amount-input"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      disabled={savingFeeSettings}
+                      value={feeAmountDraft}
+                      onChange={(e) => setFeeAmountDraft(e.target.value)}
+                      placeholder="3.79"
+                      className="field-control font-mono !py-1.5 text-xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleSaveFeeSettings()}
+                      disabled={savingFeeSettings}
+                      className="button-primary button-accent !min-h-[38px] !px-4 !text-xs whitespace-nowrap"
+                    >
+                      {savingFeeSettings ? "Saving..." : "Save Fee"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Recent Audit Logs */}
           <div className="panel space-y-4 p-5 md:p-6">
@@ -688,57 +956,316 @@ function AdminDashboardContent() {
                     Scheduled {new Date(ev.registration_start).toLocaleDateString()} – {new Date(ev.registration_end).toLocaleDateString()}
                   </div>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingPricesEventId(editingPricesEventId === ev.id ? null : ev.id);
-                      setPriceDraft({
-                        first_year_ticket_price: ev.first_year_ticket_price ?? 500,
-                        second_year_ticket_price: ev.second_year_ticket_price ?? 600,
-                        other_ticket_price: ev.other_ticket_price ?? null,
-                      });
-                    }}
-                    className="inline-flex min-h-10 items-center gap-2 border border-slate-300 px-3 text-[10px] font-extrabold uppercase tracking-[.08em] text-slate-700 hover:bg-slate-50"
-                  >
-                    <Settings className="h-3.5 w-3.5" /> Edit prices
-                  </button>
-                  {(ev.status === "PUBLISHED" || ev.status === "LIVE" || ev.status === "REGISTRATION_CLOSED") && (
+                {isAdmin && (
+                  <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
-                      onClick={() => void handleRegistrationToggle(ev)}
-                      aria-label={!registrationAvailability(ev).open ? `Open registration for ${ev.title}` : `Close registration for ${ev.title}`}
-                      className={`inline-flex min-h-10 items-center gap-2 border px-3 text-[10px] font-extrabold uppercase tracking-[.08em] transition ${
-                        !registrationAvailability(ev).open
-                          ? "border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
-                          : "border-rose-300 bg-rose-50 text-rose-800 hover:bg-rose-100"
-                      }`}
+                      onClick={() => {
+                        if (editingFullEventId === ev.id) {
+                          setEditingFullEventId(null);
+                        } else {
+                          handleOpenEditEventModal(ev);
+                        }
+                      }}
+                      className="inline-flex min-h-10 items-center gap-2 border border-pink-300 bg-pink-50 px-3 text-[10px] font-extrabold uppercase tracking-[.08em] text-pink-700 hover:bg-pink-100"
                     >
-                      {!registrationAvailability(ev).open
-                        ? <><Play className="h-3.5 w-3.5" />{ev.status === "REGISTRATION_CLOSED" ? "Reopen" : "Open registrations"}</>
-                        : <><Pause className="h-3.5 w-3.5" />Close registrations</>}
+                      <Edit3 className="h-3.5 w-3.5" /> {editingFullEventId === ev.id ? "Close Edit" : "Edit Event Form"}
                     </button>
-                  )}
-                  {ev.status === "DRAFT" && (
-                    <button onClick={() => handleStatusChange(ev.id, "PUBLISHED")}
-                      className="button-primary !min-h-10 !border-emerald-300 !bg-emerald-50 !px-3 !text-[10px] !text-emerald-800 hover:!bg-emerald-100">
-                      Publish
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingPricesEventId(editingPricesEventId === ev.id ? null : ev.id);
+                        setPriceDraft({
+                          first_year_ticket_price: ev.first_year_ticket_price ?? 500,
+                          second_year_ticket_price: ev.second_year_ticket_price ?? 600,
+                          other_ticket_price: ev.other_ticket_price ?? null,
+                        });
+                      }}
+                      className="inline-flex min-h-10 items-center gap-2 border border-slate-300 px-3 text-[10px] font-extrabold uppercase tracking-[.08em] text-slate-700 hover:bg-slate-50"
+                    >
+                      <Settings className="h-3.5 w-3.5" /> Edit prices
                     </button>
-                  )}
-                  {(ev.status === "PUBLISHED" || ev.status === "REGISTRATION_CLOSED") && (
-                    <button onClick={() => handleStatusChange(ev.id, "LIVE")}
-                      className="button-primary !min-h-10 !border-blue-300 !bg-blue-50 !px-3 !text-[10px] !text-blue-800 hover:!bg-blue-100">
-                      Go Live
-                    </button>
-                  )}
-                  {ev.status === "LIVE" && (
-                    <button onClick={() => handleStatusChange(ev.id, "COMPLETED")}
-                      className="button-primary !min-h-10 !bg-slate-100 !px-3 !text-[10px] !text-slate-800 hover:!bg-slate-200">
-                      Complete
-                    </button>
-                  )}
+                    {(ev.status === "PUBLISHED" || ev.status === "LIVE" || ev.status === "REGISTRATION_CLOSED") && (
+                      <button
+                        type="button"
+                        onClick={() => void handleRegistrationToggle(ev)}
+                        aria-label={!registrationAvailability(ev).open ? `Open registration for ${ev.title}` : `Close registration for ${ev.title}`}
+                        className={`inline-flex min-h-10 items-center gap-2 border px-3 text-[10px] font-extrabold uppercase tracking-[.08em] transition ${
+                          !registrationAvailability(ev).open
+                            ? "border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
+                            : "border-rose-300 bg-rose-50 text-rose-800 hover:bg-rose-100"
+                        }`}
+                      >
+                        {!registrationAvailability(ev).open
+                          ? <><Play className="h-3.5 w-3.5" />{ev.status === "REGISTRATION_CLOSED" ? "Reopen" : "Open registrations"}</>
+                          : <><Pause className="h-3.5 w-3.5" />Close registrations</>}
+                      </button>
+                    )}
+                    {ev.status === "DRAFT" && (
+                      <button onClick={() => handleStatusChange(ev.id, "PUBLISHED")}
+                        className="button-primary !min-h-10 !border-emerald-300 !bg-emerald-50 !px-3 !text-[10px] !text-emerald-800 hover:!bg-emerald-100">
+                        Publish
+                      </button>
+                    )}
+                    {(ev.status === "PUBLISHED" || ev.status === "REGISTRATION_CLOSED") && (
+                      <button onClick={() => handleStatusChange(ev.id, "LIVE")}
+                        className="button-primary !min-h-10 !border-blue-300 !bg-blue-50 !px-3 !text-[10px] !text-blue-800 hover:!bg-blue-100">
+                        Go Live
+                      </button>
+                    )}
+                    {ev.status === "LIVE" && (
+                      <button onClick={() => handleStatusChange(ev.id, "COMPLETED")}
+                        className="button-primary !min-h-10 !bg-slate-100 !px-3 !text-[10px] !text-slate-800 hover:!bg-slate-200">
+                        Complete
+                      </button>
+                    )}
+                  </div>
+                )}
                 </div>
-                </div>
+                {editingFullEventId === ev.id && (
+                  <form onSubmit={handleSaveFullEvent} className="mt-4 space-y-4 border-t border-slate-200 pt-4 bg-slate-50 p-4 rounded-xl">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">Edit All Event Details ({ev.title})</h4>
+                      <button type="button" onClick={() => setEditingFullEventId(null)} className="text-xs text-slate-500 font-bold hover:text-slate-700">
+                        Cancel
+                      </button>
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <label className="text-[10px] font-extrabold uppercase tracking-[.08em] text-slate-600">Title</label>
+                        <input
+                          type="text"
+                          required
+                          value={editEventForm.title}
+                          onChange={(e) => setEditEventForm((f) => ({ ...f, title: e.target.value }))}
+                          className="field-control mt-1"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-extrabold uppercase tracking-[.08em] text-slate-600">Slug</label>
+                        <input
+                          type="text"
+                          required
+                          value={editEventForm.slug}
+                          onChange={(e) => setEditEventForm((f) => ({ ...f, slug: e.target.value }))}
+                          className="field-control mt-1"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-extrabold uppercase tracking-[.08em] text-slate-600">Description</label>
+                      <textarea
+                        rows={2}
+                        value={editEventForm.description || ""}
+                        onChange={(e) => setEditEventForm((f) => ({ ...f, description: e.target.value }))}
+                        className="field-control mt-1"
+                      />
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                      <div>
+                        <label className="text-[10px] font-extrabold uppercase tracking-[.08em] text-slate-600">Venue</label>
+                        <input
+                          type="text"
+                          required
+                          value={editEventForm.venue}
+                          onChange={(e) => setEditEventForm((f) => ({ ...f, venue: e.target.value }))}
+                          className="field-control mt-1"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-extrabold uppercase tracking-[.08em] text-slate-600">Event Type</label>
+                        <select
+                          value={editEventForm.event_type}
+                          onChange={(e) => setEditEventForm((f) => ({ ...f, event_type: e.target.value }))}
+                          className="field-control mt-1"
+                        >
+                          <option value="FRESHERS">FRESHERS</option>
+                          <option value="FAREWELL">FAREWELL</option>
+                          <option value="CULTURAL">CULTURAL</option>
+                          <option value="CONCERT">CONCERT</option>
+                          <option value="WORKSHOP">WORKSHOP</option>
+                          <option value="OTHER">OTHER</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-extrabold uppercase tracking-[.08em] text-slate-600">Status</label>
+                        <select
+                          value={editEventForm.status}
+                          onChange={(e) => setEditEventForm((f) => ({ ...f, status: e.target.value as EventStatus }))}
+                          className="field-control mt-1"
+                        >
+                          <option value="DRAFT">DRAFT</option>
+                          <option value="PUBLISHED">PUBLISHED</option>
+                          <option value="LIVE">LIVE</option>
+                          <option value="REGISTRATION_CLOSED">REGISTRATION CLOSED</option>
+                          <option value="COMPLETED">COMPLETED</option>
+                          <option value="CANCELLED">CANCELLED</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                      <div>
+                        <label className="text-[10px] font-extrabold uppercase tracking-[.08em] text-slate-600">Event Start Time</label>
+                        <input
+                          type="datetime-local"
+                          required
+                          value={editEventForm.start_time}
+                          onChange={(e) => setEditEventForm((f) => ({ ...f, start_time: e.target.value }))}
+                          className="field-control mt-1"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-extrabold uppercase tracking-[.08em] text-slate-600">Event End Time</label>
+                        <input
+                          type="datetime-local"
+                          required
+                          value={editEventForm.end_time}
+                          onChange={(e) => setEditEventForm((f) => ({ ...f, end_time: e.target.value }))}
+                          className="field-control mt-1"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-extrabold uppercase tracking-[.08em] text-slate-600">Reg Start Time</label>
+                        <input
+                          type="datetime-local"
+                          required
+                          value={editEventForm.registration_start}
+                          onChange={(e) => setEditEventForm((f) => ({ ...f, registration_start: e.target.value }))}
+                          className="field-control mt-1"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-extrabold uppercase tracking-[.08em] text-slate-600">Reg End Time</label>
+                        <input
+                          type="datetime-local"
+                          required
+                          value={editEventForm.registration_end}
+                          onChange={(e) => setEditEventForm((f) => ({ ...f, registration_end: e.target.value }))}
+                          className="field-control mt-1"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                      <div>
+                        <label className="text-[10px] font-extrabold uppercase tracking-[.08em] text-slate-600">Capacity</label>
+                        <input
+                          type="number"
+                          min="1"
+                          required
+                          value={editEventForm.capacity}
+                          onChange={(e) => setEditEventForm((f) => ({ ...f, capacity: Number(e.target.value) }))}
+                          className="field-control mt-1"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-extrabold uppercase tracking-[.08em] text-slate-600">Default Price (₹)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          required
+                          value={editEventForm.ticket_price}
+                          onChange={(e) => setEditEventForm((f) => ({ ...f, ticket_price: Number(e.target.value) }))}
+                          className="field-control mt-1"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-extrabold uppercase tracking-[.08em] text-slate-600">1st Year Price (₹)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          required
+                          value={editEventForm.first_year_ticket_price}
+                          onChange={(e) => setEditEventForm((f) => ({ ...f, first_year_ticket_price: Number(e.target.value) }))}
+                          className="field-control mt-1"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-extrabold uppercase tracking-[.08em] text-slate-600">2nd Year Price (₹)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          required
+                          value={editEventForm.second_year_ticket_price}
+                          onChange={(e) => setEditEventForm((f) => ({ ...f, second_year_ticket_price: Number(e.target.value) }))}
+                          className="field-control mt-1"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-6 pt-2">
+                      <label className="inline-flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={editEventForm.allow_online}
+                          onChange={(e) => setEditEventForm((f) => ({ ...f, allow_online: e.target.checked }))}
+                          className="rounded border-slate-300 text-pink-600 focus:ring-pink-500"
+                        />
+                        <span>Allow Online Payment</span>
+                      </label>
+                      <label className="inline-flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={editEventForm.allow_offline}
+                          onChange={(e) => setEditEventForm((f) => ({ ...f, allow_offline: e.target.checked }))}
+                          className="rounded border-slate-300 text-pink-600 focus:ring-pink-500"
+                        />
+                        <span>Allow Offline Collection</span>
+                      </label>
+                      <label className="inline-flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={editEventForm.allow_autofill}
+                          onChange={(e) => setEditEventForm((f) => ({ ...f, allow_autofill: e.target.checked }))}
+                          className="rounded border-slate-300 text-pink-600 focus:ring-pink-500"
+                        />
+                        <span>Allow Student Details Autofill</span>
+                      </label>
+                      <label className="inline-flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={editEventForm.gate_validation_enabled}
+                          onChange={(e) => setEditEventForm((f) => ({ ...f, gate_validation_enabled: e.target.checked }))}
+                          className="rounded border-slate-300 text-pink-600 focus:ring-pink-500"
+                        />
+                        <span>Requires Gate Pass</span>
+                      </label>
+                      <label className="inline-flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={editEventForm.food_validation_enabled}
+                          onChange={(e) => setEditEventForm((f) => ({ ...f, food_validation_enabled: e.target.checked }))}
+                          className="rounded border-slate-300 text-pink-600 focus:ring-pink-500"
+                        />
+                        <span>Includes Food Pass</span>
+                      </label>
+                    </div>
+
+                    <div className="flex gap-2 pt-2">
+                      <button
+                        type="submit"
+                        disabled={savingFullEvent}
+                        className="button-primary button-accent flex-1"
+                      >
+                        {savingFullEvent ? "Saving All Event Details…" : "Save Complete Event Form"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingFullEventId(null)}
+                        className="px-4 py-2 bg-slate-200 text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-300"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                )}
                 {editingPricesEventId === ev.id && (
                   <div className="mt-4 grid gap-3 border-t border-slate-200 pt-4 sm:grid-cols-2">
                     <label className="text-[10px] font-extrabold uppercase tracking-[.08em] text-slate-600">
@@ -854,6 +1381,7 @@ function AdminDashboardContent() {
                         event_id: "",
                       }))}
                     >
+                      {isSuperAdmin && <option value="ADMIN">College Admin</option>}
                       <option value="GATE_STAFF">Gate Entry Staff</option>
                       <option value="FOOD_STAFF">Food Counter Staff</option>
                       <option value="EVENT_MANAGER">Event Organizer</option>
@@ -1087,17 +1615,50 @@ function AdminDashboardContent() {
       {["registrations", "payments", "entries", "offline", "audit"].includes(activeTab) && (
         <div className="space-y-4">
           <div className="flex items-center justify-between gap-3 flex-wrap">
-            <h3 className="text-sm font-extrabold text-slate-900 capitalize">
-              {activeTab === "entries" ? "Gate Entries" : activeTab === "audit" ? "Audit Logs" : activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} Report
-            </h3>
+            <div className="flex items-center gap-3 flex-wrap flex-1">
+              <h3 className="text-sm font-extrabold text-slate-900 capitalize">
+                {activeTab === "entries" ? "Gate Entries" : activeTab === "audit" ? "Audit Logs" : activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} Report
+              </h3>
+              <div className="relative min-w-[240px] max-w-md flex-1">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search by Roll No, Name, Email, Ticket Code, Phone..."
+                  className="w-full pl-9 pr-8 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-pink-500 transition"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
             <div className="flex gap-2 items-center">
-              <span className="text-xs text-slate-500 font-medium">{reportData.length} records</span>
+              <span className="text-xs text-slate-500 font-medium">
+                {filteredReportData.length} {searchQuery ? `of ${reportData.length}` : ""} records
+              </span>
               {activeTab === "registrations" && (
-                <button onClick={handleDownloadCSV}
-                  className="px-3 py-1.5 bg-pink-600 hover:bg-pink-700 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 transition shadow-sm">
-                  <FileSpreadsheet className="w-3.5 h-3.5" />
-                  <span>Export CSV</span>
-                </button>
+                <>
+                  <button
+                    onClick={() => void handleResendAllTickets()}
+                    disabled={resendingAll}
+                    title="Resend ticket pass emails to all registered participants"
+                    className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 transition shadow-sm disabled:opacity-50"
+                  >
+                    <Mail className="w-3.5 h-3.5" />
+                    <span>{resendingAll ? "Sending to All…" : "Resend Mails to All"}</span>
+                  </button>
+                  <button onClick={handleDownloadCSV}
+                    className="px-3 py-1.5 bg-pink-600 hover:bg-pink-700 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 transition shadow-sm">
+                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                    <span>Export CSV</span>
+                  </button>
+                </>
               )}
               <button onClick={() => loadReport(activeTab)}
                 className="px-3 py-1.5 bg-slate-100 text-slate-700 text-xs font-bold rounded-lg flex items-center gap-1.5 transition hover:bg-slate-200">
@@ -1121,6 +1682,7 @@ function AdminDashboardContent() {
                         <>
                           <th className="px-4 py-3 text-left text-slate-700 font-extrabold">Name</th>
                           <th className="px-4 py-3 text-left text-slate-700 font-extrabold">Roll No.</th>
+                          <th className="px-4 py-3 text-left text-slate-700 font-extrabold">Email</th>
                           <th className="px-4 py-3 text-left text-slate-700 font-extrabold">Event</th>
                           <th className="px-4 py-3 text-left text-slate-700 font-extrabold">Status</th>
                           <th className="px-4 py-3 text-left text-slate-700 font-extrabold">Method</th>
@@ -1129,6 +1691,7 @@ function AdminDashboardContent() {
                           <th className="px-4 py-3 text-left text-slate-700 font-extrabold">Gate</th>
                           <th className="px-4 py-3 text-left text-slate-700 font-extrabold">Food</th>
                           <th className="px-4 py-3 text-left text-slate-700 font-extrabold">Registered</th>
+                          <th className="px-4 py-3 text-right text-slate-700 font-extrabold">Actions</th>
                         </>
                       )}
                       {activeTab === "payments" && (
@@ -1139,6 +1702,7 @@ function AdminDashboardContent() {
                           <th className="px-4 py-3 text-left text-slate-700 font-extrabold">Amount</th>
                           <th className="px-4 py-3 text-left text-slate-700 font-extrabold">Status</th>
                           <th className="px-4 py-3 text-left text-slate-700 font-extrabold">Date</th>
+                          <th className="px-4 py-3 text-right text-slate-700 font-extrabold">Actions</th>
                         </>
                       )}
                       {activeTab === "entries" && (
@@ -1161,6 +1725,7 @@ function AdminDashboardContent() {
                           <th className="px-4 py-3 text-left text-slate-700 font-extrabold">Receipt</th>
                           <th className="px-4 py-3 text-left text-slate-700 font-extrabold">Issued By</th>
                           <th className="px-4 py-3 text-left text-slate-700 font-extrabold">Collected At</th>
+                          <th className="px-4 py-3 text-right text-slate-700 font-extrabold">Actions</th>
                         </>
                       )}
                       {activeTab === "audit" && (
@@ -1174,16 +1739,60 @@ function AdminDashboardContent() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {reportData.length === 0 ? (
+                    {filteredReportData.length === 0 ? (
                       <tr>
-                        <td colSpan={10} className="px-4 py-8 text-center text-slate-400 font-medium">No data found for this report.</td>
+                        <td colSpan={12} className="px-4 py-8 text-center text-slate-400 font-medium">
+                          {searchQuery ? "No matching records found." : "No data found for this report."}
+                        </td>
                       </tr>
-                    ) : reportData.map((row, i) => (
+                    ) : filteredReportData.map((row, i) => {
+                      const regId = String(row.registration_id || row.id || "");
+                      return (
                       <tr key={String(row.id ?? i)} className="hover:bg-slate-50 transition">
                         {activeTab === "registrations" && (
                           <>
                             <td className="px-4 py-3 text-slate-900 font-bold">{row.full_name}</td>
                             <td className="px-4 py-3 font-mono text-pink-600 font-bold">{row.roll_number}</td>
+                            <td className="px-4 py-3 font-mono text-slate-600">
+                              {editingEmailRegId === regId ? (
+                                <div className="flex items-center gap-1.5 min-w-[220px]">
+                                  <input
+                                    type="email"
+                                    value={emailDraft}
+                                    onChange={(e) => setEmailDraft(e.target.value)}
+                                    className="field-control !py-1 !px-2 !text-xs font-mono"
+                                    placeholder="New email"
+                                  />
+                                  <button
+                                    onClick={() => void handleSaveRegistrationEmail(regId)}
+                                    disabled={savingEmail}
+                                    className="px-2 py-1 bg-emerald-600 text-white font-bold rounded text-[10px] hover:bg-emerald-700 disabled:opacity-50"
+                                  >
+                                    {savingEmail ? "..." : "Save"}
+                                  </button>
+                                  <button
+                                    onClick={() => setEditingEmailRegId(null)}
+                                    className="px-2 py-1 bg-slate-200 text-slate-700 font-bold rounded text-[10px] hover:bg-slate-300"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-1">
+                                  <span>{row.email}</span>
+                                  <button
+                                    onClick={() => {
+                                      setEditingEmailRegId(regId);
+                                      setEmailDraft(String(row.email || ""));
+                                    }}
+                                    title="Edit Email Address"
+                                    className="text-slate-400 hover:text-blue-600 transition"
+                                  >
+                                    <Edit3 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              )}
+                            </td>
                             <td className="px-4 py-3 text-slate-700 max-w-[120px] truncate">{row.event_title}</td>
                             <td className="px-4 py-3"><StatusBadge status={String(row.status || "")} /></td>
                             <td className="px-4 py-3 text-slate-500 font-medium">{row.payment_method}</td>
@@ -1192,6 +1801,32 @@ function AdminDashboardContent() {
                             <td className="px-4 py-3">{row.gate_validated_at ? <span className="text-emerald-600 font-extrabold">✓</span> : <span className="text-slate-300">—</span>}</td>
                             <td className="px-4 py-3">{row.food_status === "CLAIMED" ? <span className="text-blue-600 font-extrabold">✓</span> : <span className="text-slate-300">—</span>}</td>
                             <td className="px-4 py-3 text-slate-400 font-medium">{formatReportDate(row.created_at, false)}</td>
+                            <td className="px-4 py-3 text-right">
+                              <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                                <button
+                                  onClick={() => {
+                                    setEditingEmailRegId(regId);
+                                    setEmailDraft(String(row.email || ""));
+                                  }}
+                                  className="px-2 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 font-bold rounded text-[10px] inline-flex items-center gap-1 transition"
+                                >
+                                  <Edit3 className="w-3 h-3" />
+                                  <span>Edit Mail</span>
+                                </button>
+                                {(row.ticket_code || row.status === "PAID" || row.status === "OFFLINE_PAID") ? (
+                                  <button
+                                    onClick={() => void handleResendMail(regId, "TICKET")}
+                                    disabled={resendingTicketId === `${regId}-TICKET`}
+                                    className="px-2 py-1 bg-pink-50 text-pink-700 hover:bg-pink-100 border border-pink-200 font-bold rounded text-[10px] inline-flex items-center gap-1 transition disabled:opacity-50"
+                                  >
+                                    <Mail className="w-3 h-3 text-pink-600" />
+                                    <span>{resendingTicketId === `${regId}-TICKET` ? "Sending…" : "Resend Ticket"}</span>
+                                  </button>
+                                ) : (
+                                  <span className="text-slate-400 text-[10px] font-medium">—</span>
+                                )}
+                              </div>
+                            </td>
                           </>
                         )}
                         {activeTab === "payments" && (
@@ -1202,6 +1837,32 @@ function AdminDashboardContent() {
                             <td className="px-4 py-3 text-pink-600 font-bold">₹{row.amount}</td>
                             <td className="px-4 py-3"><StatusBadge status={String(row.status || "")} /></td>
                             <td className="px-4 py-3 text-slate-400 font-medium">{formatReportDate(row.created_at, false)}</td>
+                            <td className="px-4 py-3 text-right">
+                              <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                                {regId ? (
+                                  <>
+                                    <button
+                                      onClick={() => void handleResendMail(regId, "PAYMENT")}
+                                      disabled={resendingTicketId === `${regId}-PAYMENT`}
+                                      className="px-2 py-1 bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 font-bold rounded text-[10px] inline-flex items-center gap-1 transition disabled:opacity-50"
+                                    >
+                                      <Mail className="w-3 h-3 text-amber-600" />
+                                      <span>{resendingTicketId === `${regId}-PAYMENT` ? "Sending…" : "Resend Pay Mail"}</span>
+                                    </button>
+                                    <button
+                                      onClick={() => void handleResendMail(regId, "TICKET")}
+                                      disabled={resendingTicketId === `${regId}-TICKET`}
+                                      className="px-2 py-1 bg-pink-50 text-pink-700 hover:bg-pink-100 border border-pink-200 font-bold rounded text-[10px] inline-flex items-center gap-1 transition disabled:opacity-50"
+                                    >
+                                      <Mail className="w-3 h-3 text-pink-600" />
+                                      <span>{resendingTicketId === `${regId}-TICKET` ? "Sending…" : "Resend Ticket"}</span>
+                                    </button>
+                                  </>
+                                ) : (
+                                  <span className="text-slate-400 text-[10px] font-medium">—</span>
+                                )}
+                              </div>
+                            </td>
                           </>
                         )}
                         {activeTab === "entries" && (
@@ -1224,6 +1885,22 @@ function AdminDashboardContent() {
                             <td className="px-4 py-3 font-mono text-slate-600 font-bold">{row.receipt_number}</td>
                             <td className="px-4 py-3 text-blue-700 font-extrabold">{row.collector_name || "—"}</td>
                             <td className="px-4 py-3 text-slate-400 text-[10px] font-medium">{formatReportDate(row.created_at)}</td>
+                            <td className="px-4 py-3 text-right">
+                              <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                                {regId ? (
+                                  <button
+                                    onClick={() => void handleResendMail(regId, "TICKET")}
+                                    disabled={resendingTicketId === `${regId}-TICKET`}
+                                    className="px-2 py-1 bg-pink-50 text-pink-700 hover:bg-pink-100 border border-pink-200 font-bold rounded text-[10px] inline-flex items-center gap-1 transition disabled:opacity-50"
+                                  >
+                                    <Mail className="w-3 h-3 text-pink-600" />
+                                    <span>{resendingTicketId === `${regId}-TICKET` ? "Sending…" : "Resend Ticket"}</span>
+                                  </button>
+                                ) : (
+                                  <span className="text-slate-400 text-[10px] font-medium">—</span>
+                                )}
+                              </div>
+                            </td>
                           </>
                         )}
                         {activeTab === "audit" && (
@@ -1237,7 +1914,7 @@ function AdminDashboardContent() {
                           </>
                         )}
                       </tr>
-                    ))}
+                    );})}
                   </tbody>
                 </table>
               </div>

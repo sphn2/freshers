@@ -3,7 +3,7 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field, field_validator
 
 
-StaffRole = Literal["EVENT_MANAGER", "GATE_STAFF", "FOOD_STAFF"]
+StaffRole = Literal["ADMIN", "EVENT_MANAGER", "GATE_STAFF", "FOOD_STAFF", "OFFLINE_COLLECTOR"]
 
 
 class StaffAccountCreate(BaseModel):

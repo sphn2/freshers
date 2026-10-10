@@ -194,7 +194,7 @@ export const api = {
     email: string;
     full_name: string;
     password: string;
-    role: "EVENT_MANAGER" | "GATE_STAFF" | "FOOD_STAFF";
+    role: "ADMIN" | "EVENT_MANAGER" | "GATE_STAFF" | "FOOD_STAFF" | "OFFLINE_COLLECTOR";
     event_id?: string;
   }) =>
     apiFetch<{
@@ -223,6 +223,37 @@ export const api = {
   getRegistrationsReport: (eventId?: string) =>
     apiFetch<{ registrations: ReportRow[] }>(
       `/admin/reports/registrations${eventId ? `?event_id=${encodeURIComponent(eventId)}` : ""}`,
+    ),
+  updateRegistrationEmail: (registrationId: string, email: string) =>
+    apiFetch<{ message: string; email: string }>(
+      `/admin/registrations/${encodeURIComponent(registrationId)}/email`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ email }),
+      },
+    ),
+  resendTicketEmail: (registrationId: string) =>
+    apiFetch<{ message: string }>(
+      `/admin/registrations/${encodeURIComponent(registrationId)}/resend-ticket`,
+      {
+        method: "POST",
+      },
+    ),
+  resendAllTickets: (eventId?: string) =>
+    apiFetch<{ message: string }>(
+      `/admin/registrations/resend-all-tickets`,
+      {
+        method: "POST",
+        body: JSON.stringify({ event_id: eventId }),
+      },
+    ),
+  resendAnyMail: (registrationId: string, mailType: "TICKET" | "PAYMENT" | "GATE" | "FOOD" | "ALL") =>
+    apiFetch<{ message: string }>(
+      `/admin/registrations/${encodeURIComponent(registrationId)}/resend-mail`,
+      {
+        method: "POST",
+        body: JSON.stringify({ mail_type: mailType }),
+      },
     ),
   getPaymentsReport: (eventId?: string) =>
     apiFetch<{ payments: ReportRow[] }>(
@@ -261,5 +292,15 @@ export const api = {
   getCurrentUser: () =>
     apiFetch<{ user: { id: string; email: string | null; full_name: string }; roles: string[] }>(
       "/auth/me",
+    ),
+  getConvenienceFeeSettings: () =>
+    apiFetch<{ enabled: boolean; amount: number }>("/admin/settings/convenience-fee"),
+  updateConvenienceFeeSettings: (payload: { enabled?: boolean; amount?: number }) =>
+    apiFetch<{ message: string; settings: { enabled: boolean; amount: number } }>(
+      "/admin/settings/convenience-fee",
+      {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      },
     ),
 };

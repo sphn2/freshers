@@ -89,10 +89,12 @@ class ReportService:
             return db.execute_query(
                 """SELECT p.id, p.razorpay_order_id, p.razorpay_payment_id, p.amount, p.currency,
                           p.status, p.payment_method, p.created_at,
-                          r.full_name, r.roll_number, r.email, e.title as event_title
+                          r.id as registration_id, r.full_name, r.roll_number, r.email, r.phone, e.title as event_title,
+                          t.ticket_code
                    FROM payments p
                    JOIN registrations r ON p.registration_id = r.id
                    JOIN events e ON r.event_id = e.id
+                   LEFT JOIN tickets t ON r.id = t.registration_id
                    WHERE r.event_id = %s
                    ORDER BY p.created_at DESC LIMIT %s""",
                 (event_id, limit)
@@ -101,10 +103,12 @@ class ReportService:
             return db.execute_query(
                 """SELECT p.id, p.razorpay_order_id, p.razorpay_payment_id, p.amount, p.currency,
                           p.status, p.payment_method, p.created_at,
-                          r.full_name, r.roll_number, r.email, e.title as event_title
+                          r.id as registration_id, r.full_name, r.roll_number, r.email, r.phone, e.title as event_title,
+                          t.ticket_code
                    FROM payments p
                    JOIN registrations r ON p.registration_id = r.id
                    JOIN events e ON r.event_id = e.id
+                   LEFT JOIN tickets t ON r.id = t.registration_id
                    ORDER BY p.created_at DESC LIMIT %s""",
                 (limit,)
             )
@@ -115,7 +119,7 @@ class ReportService:
             return db.execute_query(
                 """SELECT t.id, t.ticket_code, t.status, t.gate_validated_at, t.gate_validated_by,
                           t.gate_location, t.gate_method,
-                          r.full_name, r.roll_number, r.department, e.title as event_title
+                          r.id as registration_id, r.full_name, r.roll_number, r.email, r.phone, r.department, e.title as event_title
                    FROM tickets t
                    JOIN registrations r ON t.registration_id = r.id
                    JOIN events e ON t.event_id = e.id
@@ -127,7 +131,7 @@ class ReportService:
             return db.execute_query(
                 """SELECT t.id, t.ticket_code, t.status, t.gate_validated_at, t.gate_validated_by,
                           t.gate_location, t.gate_method,
-                          r.full_name, r.roll_number, r.department, e.title as event_title
+                          r.id as registration_id, r.full_name, r.roll_number, r.email, r.phone, r.department, e.title as event_title
                    FROM tickets t
                    JOIN registrations r ON t.registration_id = r.id
                    JOIN events e ON t.event_id = e.id
@@ -141,7 +145,7 @@ class ReportService:
         if event_id:
             return db.execute_query(
                 """SELECT oc.id, oc.amount, oc.payment_method, oc.receipt_number, oc.notes, oc.created_at,
-                          r.full_name, r.roll_number, r.department, r.email, e.title as event_title,
+                          r.id as registration_id, r.full_name, r.roll_number, r.department, r.email, r.phone, e.title as event_title,
                           t.ticket_code, p.full_name as collector_name, p.email as collector_email
                    FROM offline_collections oc
                    JOIN registrations r ON oc.registration_id = r.id
@@ -155,7 +159,7 @@ class ReportService:
         else:
             return db.execute_query(
                 """SELECT oc.id, oc.amount, oc.payment_method, oc.receipt_number, oc.notes, oc.created_at,
-                          r.full_name, r.roll_number, r.department, r.email, e.title as event_title,
+                          r.id as registration_id, r.full_name, r.roll_number, r.department, r.email, r.phone, e.title as event_title,
                           t.ticket_code, p.full_name as collector_name, p.email as collector_email
                    FROM offline_collections oc
                    JOIN registrations r ON oc.registration_id = r.id

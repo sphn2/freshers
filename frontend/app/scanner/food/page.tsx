@@ -200,10 +200,13 @@ function FoodScannerContent() {
           </div>
 
           <button
-            onClick={() => setResult(null)}
-            className="px-6 py-2.5 bg-black/20 hover:bg-black/30 text-current font-black text-xs rounded-xl uppercase tracking-wider mt-2 transition"
+            onClick={() => {
+              setResult(null);
+              setInputCode("");
+            }}
+            className="w-full py-3.5 bg-black/25 hover:bg-black/40 text-white font-black text-sm rounded-2xl uppercase tracking-wider mt-3 shadow-md border border-white/20 transition-all cursor-pointer"
           >
-            Scan Next Student
+            ⚡ SCAN NEXT STUDENT
           </button>
         </div>
       )}
@@ -213,7 +216,8 @@ function FoodScannerContent() {
         <div className="min-w-0 md:col-span-2">
           <QrCameraScanner
             onScan={(decodedText) => void executeFoodValidation(decodedText)}
-            scanEnabled={!validating}
+            scanEnabled={!validating && !result}
+            resetTrigger={result}
           />
           {validating && (
             <p role="status" className="mt-3 bg-blue-50 px-3 py-2 text-center text-xs font-bold text-blue-800">

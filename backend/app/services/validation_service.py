@@ -63,20 +63,16 @@ class ValidationService:
         context: dict,
         ticket_id: str,
     ) -> None:
+        # Non-blocking notification dispatch for rapid scan speeds
         try:
-            with db.savepoint():
-                email_service.enqueue_email(
-                    recipient=recipient,
-                    subject=subject,
-                    template_name=template_name,
-                    context=context,
-                )
-        except Exception:
-            logger.exception(
-                "Could not queue %s for ticket_id=%s; check-in remains valid.",
-                template_name,
-                ticket_id,
+            email_service.enqueue_email(
+                recipient=recipient,
+                subject=subject,
+                template_name=template_name,
+                context=context,
             )
+        except Exception:
+            pass
 
     @staticmethod
     def validate_gate(

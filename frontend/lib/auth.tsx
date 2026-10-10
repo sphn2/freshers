@@ -38,27 +38,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(Boolean(supabase));
   const hydratedToken = useRef<string | null>(null);
   const hydratedRole = useRef<Role | null>(null);
+  const hydratingPromise = useRef<Promise<Role> | null>(null);
   const router = useRouter();
 
-  const hydrate = async (accessToken: string, fallbackUser: { id: string; email?: string | null }) => {
+  const hydrate = (accessToken: string, fallbackUser: { id: string; email?: string | null }): Promise<Role> => {
     if (hydratedToken.current === accessToken && hydratedRole.current) {
-      return hydratedRole.current;
+      return Promise.resolve(hydratedRole.current);
     }
-    const response = await fetch(`${getApiBaseUrl()}/auth/me`, { headers: { Authorization: `Bearer ${accessToken}` } });
-    if (!response.ok) throw new Error("Your account could not be authorized for this platform.");
-    const data = await response.json();
-    const assignedRole = selectRole(data.roles || []);
-    hydratedToken.current = accessToken;
-    hydratedRole.current = assignedRole;
-    setToken(accessToken);
-    setRole(assignedRole);
-    setUser({
-      id: data.user?.id || fallbackUser.id,
-      email: data.user?.email || fallbackUser.email || "",
-      full_name: data.user?.full_name || fallbackUser.email?.split("@")[0] || "Sphoorthy User",
-      role: assignedRole,
-    });
-    return assignedRole;
+    if (hydratingPromise.current) {
+      return hydratingPromise.current;
+    }
+    const promise = (async () => {
+      try {
+        const response = await fetch(`${getApiBaseUrl()}/auth/me`, { headers: { Authorization: `Bearer ${accessToken}` } });
+        if (!response.ok) throw new Error("Your account could not be authorized for this platform.");
+        const data = await response.json();
+        const assignedRole = selectRole(data.roles || []);
+        hydratedToken.current = accessToken;
+        hydratedRole.current = assignedRole;
+        setToken(accessToken);
+        setRole(assignedRole);
+        setUser({
+          id: data.user?.id || fallbackUser.id,
+          email: data.user?.email || fallbackUser.email || "",
+          full_name: data.user?.full_name || fallbackUser.email?.split("@")[0] || "Sphoorthy User",
+          role: assignedRole,
+        });
+        return assignedRole;
+      } finally {
+        hydratingPromise.current = null;
+      }
+    })();
+    hydratingPromise.current = promise;
+    return promise;
   };
 
   useEffect(() => {

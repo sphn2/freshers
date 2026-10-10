@@ -5,9 +5,11 @@ import { useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { QRCodeSVG } from "qrcode.react";
-import { CheckCircle2, Printer, RefreshCw, TicketCheck } from "lucide-react";
+import { CheckCircle2, Download, Loader2, Printer, RefreshCw, TicketCheck } from "lucide-react";
 import { errorMessage } from "@/lib/types";
 import type { Ticket as TicketData } from "@/lib/types";
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
 
 export default function DigitalTicketPage() {
   const { ticketId } = useParams<{ ticketId: string }>();
@@ -15,6 +17,7 @@ export default function DigitalTicketPage() {
   const [ticket, setTicket] = useState<TicketData | null>(null);
   const [loading, setLoading] = useState(true);
   const [resending, setResending] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -49,6 +52,38 @@ export default function DigitalTicketPage() {
     }
   };
 
+  const handleDownloadPdf = async () => {
+    const element = document.getElementById("digital-ticket-card");
+    if (!element) return;
+    setDownloadingPdf(true);
+    try {
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: "#ffffff",
+      });
+      const imgData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+      });
+
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      const imgWidth = pdfWidth - 30;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+      pdf.addImage(imgData, "PNG", 15, 15, imgWidth, Math.min(imgHeight, pdfHeight - 30));
+      pdf.save(`Ticket_${ticket?.roll_number || "pass"}_${ticket?.ticket_code || "entry"}.pdf`);
+    } catch (err: unknown) {
+      setError(errorMessage(err, "Failed downloading ticket PDF."));
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
+
   if (loading) {
     return <div className="p-8 text-center text-slate-400 font-medium">Loading digital ticket pass...</div>;
   }
@@ -72,7 +107,7 @@ export default function DigitalTicketPage() {
       )}
 
       {/* Main Ticket Card */}
-      <div className="ticket-pass panel relative overflow-hidden">
+      <div id="digital-ticket-card" className="ticket-pass panel relative overflow-hidden bg-white">
         {/* Ticket Header */}
         <div className="relative border-b border-slate-200 bg-[#17221e] p-6 text-center text-white">
           <div className="mx-auto mb-3 w-fit rounded-lg bg-white/95 p-1.5 shadow-md">
@@ -158,12 +193,30 @@ export default function DigitalTicketPage() {
           </div>
         </div>
 
-        {/* Resend Email Button */}
-        <div className="flex flex-wrap items-center justify-center gap-4 border-t border-slate-200 bg-[#f7f4ec] p-4">
+        {/* Download PDF & Action Buttons */}
+        <div className="flex flex-wrap items-center justify-center gap-3 border-t border-slate-200 bg-[#f7f4ec] p-4">
+          <button
+            type="button"
+            onClick={handleDownloadPdf}
+            disabled={downloadingPdf}
+            className="button-primary button-accent !min-h-10 !px-4 !text-[11px] disabled:opacity-50 inline-flex items-center gap-2"
+          >
+            {downloadingPdf ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <span>Generating PDF...</span>
+              </>
+            ) : (
+              <>
+                <Download className="h-3.5 w-3.5" />
+                <span>Download Ticket PDF</span>
+              </>
+            )}
+          </button>
           <button
             type="button"
             onClick={() => window.print()}
-            className="inline-flex min-h-10 items-center gap-2 border border-slate-300 px-3 text-[10px] font-bold text-slate-700 hover:bg-white"
+            className="inline-flex min-h-10 items-center gap-2 border border-slate-300 px-3 text-[10px] font-bold text-slate-700 hover:bg-white bg-white"
           >
             <Printer className="h-3.5 w-3.5" /> Print pass
           </button>
@@ -174,7 +227,7 @@ export default function DigitalTicketPage() {
               className="inline-flex min-h-10 items-center gap-2 px-3 text-[10px] font-bold text-blue-700 hover:bg-white disabled:opacity-50"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${resending ? "animate-spin" : ""}`} />
-              <span>Resend Ticket Pass to Email</span>
+              <span>Resend Ticket to Email</span>
             </button>
           )}
         </div>

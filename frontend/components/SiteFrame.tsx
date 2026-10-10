@@ -93,27 +93,53 @@ function SiteFrame({ children }: { children: React.ReactNode }) {
 
           <div className="hidden md:flex items-center gap-3">
             {user ? (
-              <>
-                <div className="text-right">
-                  <p className="text-xs font-bold text-slate-900">{user.full_name}</p>
-                  <p className="mt-0.5 text-[9px] font-extrabold tracking-[.12em] text-[#b1840e] uppercase">{role.replaceAll("_", " ")}</p>
+              <div className="flex items-center gap-3 pl-3 border-l border-slate-200">
+                <div className="flex items-center gap-2.5">
+                  <div className="h-9 w-9 rounded-full bg-gradient-to-br from-amber-500 to-amber-700 text-white font-extrabold text-xs grid place-items-center shadow-xs border border-amber-300">
+                    {user.full_name?.charAt(0)?.toUpperCase() || "U"}
+                  </div>
+                  <div className="text-left">
+                    <p className="text-xs font-bold text-slate-900 leading-tight">{user.full_name}</p>
+                    <span className="inline-block mt-0.5 px-2 py-0.2 rounded-full text-[9px] font-extrabold tracking-[.1em] text-amber-900 bg-amber-100 border border-amber-300/80 uppercase">
+                      {role.replaceAll("_", " ")}
+                    </span>
+                  </div>
                 </div>
                 <button
                   type="button"
                   aria-label="Sign out"
                   onClick={() => void logout()}
-                  className="grid h-9 w-9 place-items-center border border-slate-300 bg-transparent text-slate-700 transition hover:bg-slate-100 rounded-md"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200/80 hover:bg-rose-100 hover:border-rose-300 transition-all shadow-2xs cursor-pointer active:scale-95 ml-1"
                 >
-                  <LogOut className="h-4 w-4" />
+                  <LogOut className="h-3.5 w-3.5" />
+                  <span>Sign Out</span>
                 </button>
-              </>
+              </div>
             ) : (
               <Link href="/auth/login" className="button-primary !min-h-10 !px-4">
                 Staff sign in <ArrowUpRight className="h-4 w-4" />
               </Link>
             )}
           </div>
-          {!user && (
+
+          {/* Mobile Header Action / Logout */}
+          {user ? (
+            <div className="flex md:hidden items-center gap-2">
+              <div className="flex flex-col text-right">
+                <span className="text-[11px] font-bold text-slate-900 truncate max-w-[100px]">{user.full_name?.split(" ")[0]}</span>
+                <span className="text-[8px] font-extrabold tracking-wider text-amber-800 uppercase">{role.replaceAll("_", " ")}</span>
+              </div>
+              <button
+                type="button"
+                aria-label="Sign out"
+                onClick={() => void logout()}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 hover:bg-rose-100 active:scale-95 transition-all"
+              >
+                <LogOut className="h-3.5 w-3.5" />
+                <span>Sign Out</span>
+              </button>
+            </div>
+          ) : (
             <Link href="/auth/login" aria-label="Staff sign in" className="button-primary !min-h-10 !px-3 md:hidden">
               <LogIn className="h-4 w-4" />
             </Link>
@@ -245,7 +271,13 @@ function SiteFrame({ children }: { children: React.ReactNode }) {
 
           {/* Sub-footer Bar */}
           <div className="pt-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-[#9a9180]">
-            <p>© {currentYear} Sphoorthy Engineering College. All rights reserved.</p>
+            <div className="flex items-center gap-3 flex-wrap">
+              <p>© {currentYear} Sphoorthy Engineering College. All rights reserved.</p>
+              <span className="text-[#9a9180]/40">•</span>
+              <Link href="/privacy" className="text-amber-200/80 hover:text-amber-200 font-semibold underline transition-colors">
+                Privacy Policy
+              </Link>
+            </div>
             <p className="flex items-center gap-1.5 text-[11px] text-center sm:text-right flex-wrap justify-center sm:justify-end">
               <span>Designed and developed by</span>
               <span className="font-bold text-white">SAI HARSHA CHERUKU</span>
@@ -277,6 +309,14 @@ function SiteFrame({ children }: { children: React.ReactNode }) {
                 {label}
               </Link>
             ))}
+            <button
+              type="button"
+              onClick={() => void logout()}
+              className="flex min-w-0 flex-1 flex-col items-center gap-1 px-1 py-1 text-center text-[9px] font-bold leading-tight text-rose-600 active:scale-95 transition-transform cursor-pointer"
+            >
+              <LogOut className="h-[18px] w-[18px]" />
+              Sign Out
+            </button>
           </div>
         </nav>
       )}

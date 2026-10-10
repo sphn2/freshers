@@ -68,11 +68,9 @@ def list_all_events():
         return internal_error("fetching events")
 
 @admin_bp.route("/events/<event_id>", methods=["PATCH"])
-@require_roles("ADMIN", "EVENT_MANAGER")
+@require_roles("ADMIN")
 def update_event(event_id):
     try:
-        if not enforce_event_access(event_id):
-            return jsonify({"error": "Forbidden. Event not assigned to you."}), 403
         data = EventUpdate(**(request.get_json() or {}))
         user_id = g.current_user["id"]
         event = event_service.update_event(event_id, data, user_id=user_id)
@@ -137,6 +135,8 @@ def handle_staff_accounts():
     elif request.method == "POST":
         try:
             data = StaffAccountCreate(**(request.get_json() or {}))
+            if data.role == "ADMIN" and "SUPER_ADMIN" not in g.user_roles:
+                return jsonify({"error": "Forbidden. Only Super Admin can create Admin accounts."}), 403
             account = staff_account_service.create_account(
                 data,
                 created_by=g.current_user["id"],
@@ -264,6 +264,233 @@ def report_registrations():
     except Exception:
         return internal_error("building the registration report")
 
+@admin_bp.route("/registrations/<registration_id>/email", methods=["PATCH"])
+@require_roles("ADMIN", "EVENT_MANAGER")
+def update_registration_email(registration_id):
+    try:
+        reg = db.execute_one("SELECT * FROM registrations WHERE id = %s", (registration_id,))
+        if not reg:
+            return jsonify({"error": "Registration not found."}), 404
+        if not enforce_event_access(reg["event_id"]):
+            return jsonify({"error": "Forbidden. Event not assigned to you."}), 403
+
+        body = request.get_json() or {}
+        new_email = str(body.get("email", "")).strip().lower()
+        if not new_email or "@" not in new_email or "." not in new_email:
+            return jsonify({"error": "Invalid email address provided."}), 400
+
+        existing = db.execute_one(
+            "SELECT id FROM registrations WHERE event_id = %s AND LOWER(email) = %s AND id != %s",
+            (reg["event_id"], new_email, registration_id)
+        )
+        if existing:
+            return jsonify({"error": "Another registration for this event already uses this email address."}), 400
+
+        old_email = reg["email"]
+        now = datetime.now(timezone.utc).isoformat()
+        db.execute_write(
+            "UPDATE registrations SET email = %s, updated_at = %s WHERE id = %s",
+            (new_email, now, registration_id)
+        )
+        audit_service.log(
+            "UPDATE_REGISTRATION_EMAIL",
+            "registration",
+            registration_id,
+            g.current_user["id"],
+            {"old_email": old_email, "new_email": new_email, "event_id": reg["event_id"]},
+        )
+        return jsonify({"message": f"Registration email updated from {old_email} to {new_email}.", "email": new_email}), 200
+    except Exception:
+        return internal_error("updating registration email")
+
+@admin_bp.route("/registrations/<registration_id>/resend-ticket", methods=["POST"])
+@require_roles("ADMIN", "EVENT_MANAGER")
+def resend_ticket_email(registration_id):
+    try:
+        reg = db.execute_one("SELECT * FROM registrations WHERE id = %s", (registration_id,))
+        if not reg:
+            return jsonify({"error": "Registration not found."}), 404
+        if not enforce_event_access(reg["event_id"]):
+            return jsonify({"error": "Forbidden. Event not assigned to you."}), 403
+
+        ticket = db.execute_one("SELECT id FROM tickets WHERE registration_id = %s", (registration_id,))
+        if not ticket:
+            return jsonify({"error": "No ticket has been issued for this registration yet."}), 400
+
+        from app.services.ticket_service import TicketService
+        TicketService.resend_ticket_email(ticket["id"], user_id=g.current_user["id"])
+        return jsonify({"message": f"Digital ticket pass successfully re-sent to {reg['email']}."}), 200
+    except Exception:
+        return internal_error("resending ticket email")
+
+@admin_bp.route("/registrations/resend-all-tickets", methods=["POST"])
+@require_roles("ADMIN", "EVENT_MANAGER")
+def resend_all_tickets():
+    try:
+        body = request.get_json() or {}
+        event_id = body.get("event_id") or request.args.get("event_id")
+
+        if "EVENT_MANAGER" in g.user_roles and not event_id:
+            return jsonify({"error": "Event managers must select an assigned event to resend tickets."}), 400
+        if event_id and not enforce_event_access(event_id):
+            return jsonify({"error": "Forbidden. Event not assigned to you."}), 403
+
+        where_clause = "WHERE r.event_id = %s" if event_id else ""
+        params = (event_id,) if event_id else ()
+
+        tickets = db.execute_query(
+            f"""SELECT t.id, t.registration_id, r.email
+                FROM tickets t
+                JOIN registrations r ON t.registration_id = r.id
+                {where_clause}""",
+            params
+        )
+
+        if not tickets:
+            return jsonify({"message": "No issued tickets found to resend."}), 200
+
+        from app.services.ticket_service import TicketService
+        success_count = 0
+        for ticket in tickets:
+            try:
+                TicketService.resend_ticket_email(ticket["id"], user_id=g.current_user["id"])
+                success_count += 1
+            except Exception:
+                continue
+
+        audit_service.log(
+            "RESEND_ALL_TICKETS",
+            "event",
+            event_id or "ALL",
+            g.current_user["id"],
+            {"total_tickets": len(tickets), "successful_sends": success_count}
+        )
+
+        return jsonify({"message": f"Successfully re-sent ticket pass emails to {success_count} participant(s)."}), 200
+    except Exception:
+        return internal_error("resending tickets to all participants")
+
+@admin_bp.route("/registrations/<registration_id>/resend-mail", methods=["POST"])
+@require_roles("ADMIN", "EVENT_MANAGER")
+def resend_any_mail(registration_id):
+    try:
+        reg = db.execute_one(
+            """SELECT r.*, e.title as event_title, e.venue, e.start_time
+               FROM registrations r JOIN events e ON r.event_id = e.id
+               WHERE r.id = %s""",
+            (registration_id,)
+        )
+        if not reg:
+            return jsonify({"error": "Registration not found."}), 404
+        if not enforce_event_access(reg["event_id"]):
+            return jsonify({"error": "Forbidden. Event not assigned to you."}), 403
+
+        body = request.get_json() or {}
+        mail_type = str(body.get("mail_type", "TICKET")).upper()
+
+        sent_messages = []
+        from app.services.email_service import email_service
+        from app.services.ticket_service import TicketService
+        from app.config import config
+
+        if mail_type in ("TICKET", "ALL"):
+            ticket = db.execute_one("SELECT id FROM tickets WHERE registration_id = %s", (registration_id,))
+            if ticket:
+                TicketService.resend_ticket_email(ticket["id"], user_id=g.current_user["id"])
+                sent_messages.append("Digital Ticket Pass")
+            elif mail_type == "TICKET":
+                return jsonify({"error": "No ticket has been issued for this registration yet."}), 400
+
+        if mail_type in ("PAYMENT", "PAYMENT_LINK", "ALL"):
+            from app.utils.payment_access import create_access_token
+            payment_token, token_hash = create_access_token()
+            db.execute_write(
+                "UPDATE registrations SET payment_access_token_hash = %s WHERE id = %s",
+                (token_hash, registration_id)
+            )
+            checkout_url = f"{config.APP_URL.rstrip('/')}/checkout/{registration_id}#access_token={payment_token}"
+            email_service.send_email(
+                recipient=reg["email"],
+                subject=f"Registration & Payment Details — {reg['event_title']}",
+                template_name="emails/registration_confirmed.html",
+                context={
+                    "student_name": reg["full_name"],
+                    "event_title": reg["event_title"],
+                    "ticket_price": reg["ticket_price"],
+                    "is_free": float(reg["ticket_price"]) == 0,
+                    "ticket_code": None,
+                    "roll_number": reg["roll_number"],
+                    "department": reg["department"],
+                    "venue": reg["venue"],
+                    "event_time": reg["start_time"],
+                    "checkout_url": checkout_url,
+                    "existing_pending": reg["status"] == "PENDING_PAYMENT",
+                },
+                metadata={"registration_id": registration_id},
+            )
+            sent_messages.append("Payment/Registration Email")
+
+        if mail_type in ("GATE", "ALL"):
+            ticket = db.execute_one("SELECT * FROM tickets WHERE registration_id = %s", (registration_id,))
+            if ticket and ticket.get("gate_validated_at"):
+                email_service.send_email(
+                    recipient=reg["email"],
+                    subject=f"Ticket Validated — {reg['event_title']}",
+                    template_name="emails/gate_validated.html",
+                    context={
+                        "student_name": reg["full_name"],
+                        "event_title": reg["event_title"],
+                        "ticket_code": ticket["ticket_code"],
+                        "gate_location": ticket.get("gate_location", "Main Gate"),
+                        "validated_at": ticket["gate_validated_at"],
+                    },
+                    metadata={"registration_id": registration_id, "ticket_id": ticket["id"]},
+                )
+                sent_messages.append("Gate Entry Email")
+            elif mail_type == "GATE":
+                return jsonify({"error": "Gate entry has not been validated for this student yet."}), 400
+
+        if mail_type in ("FOOD", "ALL"):
+            ticket = db.execute_one("SELECT * FROM tickets WHERE registration_id = %s", (registration_id,))
+            food = db.execute_one("SELECT * FROM food_entitlements WHERE ticket_id = %s", (ticket["id"],)) if ticket else None
+            if food and food.get("status") == "CLAIMED":
+                email_service.send_email(
+                    recipient=reg["email"],
+                    subject=f"Food Coupon Claimed — {reg['event_title']}",
+                    template_name="emails/food_validated.html",
+                    context={
+                        "student_name": reg["full_name"],
+                        "event_title": reg["event_title"],
+                        "ticket_code": ticket["ticket_code"],
+                        "food_location": food.get("food_location", "Food Counter"),
+                        "validated_at": food.get("food_validated_at", ""),
+                    },
+                    metadata={"registration_id": registration_id, "ticket_id": ticket["id"]},
+                )
+                sent_messages.append("Food Claim Email")
+            elif mail_type == "FOOD":
+                return jsonify({"error": "Food coupon has not been claimed for this student yet."}), 400
+
+        if not sent_messages:
+            return jsonify({"error": "No matching email type could be dispatched for this registration."}), 400
+
+        return jsonify({"message": f"Successfully re-sent {', '.join(sent_messages)} to {reg['email']}."}), 200
+    except Exception:
+        return internal_error("resending registration email")
+
+@admin_bp.route("/reports/email-logs", methods=["GET"])
+@require_roles("ADMIN", "EVENT_MANAGER")
+def report_email_logs():
+    try:
+        limit = int(request.args.get("limit", 200))
+        logs = db.execute_query(
+            "SELECT * FROM email_logs ORDER BY created_at DESC LIMIT %s",
+            (limit,)
+        )
+        return jsonify({"email_logs": logs or []}), 200
+    except Exception:
+        return internal_error("fetching email logs")
+
 @admin_bp.route("/reports/registrations/csv", methods=["GET"])
 @require_roles("ADMIN", "EVENT_MANAGER")
 def export_csv():
@@ -337,3 +564,36 @@ def get_audit_logs():
         return jsonify({"audit_logs": logs}), 200
     except Exception:
         return internal_error("fetching audit logs")
+
+from app.services.system_settings_service import system_settings_service
+
+@admin_bp.route("/settings/convenience-fee", methods=["GET", "PUT"])
+@require_roles("SUPER_ADMIN")
+def manage_convenience_fee_settings():
+    if request.method == "GET":
+        try:
+            settings = system_settings_service.get_convenience_fee_settings()
+            return jsonify(settings), 200
+        except Exception:
+            return internal_error("fetching convenience fee settings")
+    elif request.method == "PUT":
+        try:
+            body = request.get_json() or {}
+            enabled = body.get("enabled")
+            amount = body.get("amount")
+            roles = getattr(g, "user_roles", [])
+            updated = system_settings_service.update_convenience_fee_settings(
+                enabled=enabled if isinstance(enabled, bool) else None,
+                amount=float(amount) if amount is not None else None,
+                roles=roles,
+            )
+            return jsonify({
+                "message": "GST & Convenience fee settings updated successfully.",
+                "settings": updated,
+            }), 200
+        except PermissionError as e:
+            return jsonify({"error": str(e)}), 403
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        except Exception:
+            return internal_error("updating convenience fee settings")

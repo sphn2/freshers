@@ -101,10 +101,17 @@ class RegistrationService:
                     )
                 db.execute_write(
                     """UPDATE registrations
-                       SET status = %s, ticket_price = %s,
+                       SET full_name = %s, roll_number = %s, email = %s, phone = %s,
+                           department = %s, college = %s, status = %s, ticket_price = %s,
                            payment_access_token_hash = %s, updated_at = %s
                        WHERE id = %s""",
                     (
+                        data.full_name.strip(),
+                        data.roll_number.strip().upper(),
+                        data.email.strip().lower(),
+                        data.phone.strip(),
+                        data.department.strip(),
+                        data.college.strip(),
                         "PAID" if ticket_price == 0 else "PENDING_PAYMENT",
                         ticket_price,
                         token_hash,
@@ -114,7 +121,7 @@ class RegistrationService:
                 )
                 reg_id = previous["id"]
                 reused_registration = True
-                existing_pending = ticket_price > 0
+                existing_pending = False
             else:
                 ensure_event_capacity_available(event)
 
@@ -149,47 +156,14 @@ class RegistrationService:
             registration = db.execute_one("SELECT * FROM registrations WHERE id = %s", (reg_id,))
             registration["ticket_id"] = ticket["id"] if ticket else None
 
-        # First-time paid registrations go straight to checkout; send the
-        # payment email there so slow SMTP delivery cannot hold navigation.
-        email_sent = False
-        if ticket_price == 0 or existing_pending:
-            checkout_url = f"{config.APP_URL.rstrip('/')}/checkout/{quote(reg_id)}#access_token={quote(payment_token)}"
-            email_sent = email_service.send_email(
-                recipient=data.email,
-                subject=(
-                    f"Complete your payment — {event['title']}"
-                    if ticket_price > 0
-                    else f"Registration Confirmed — {event['title']}"
-                ),
-                template_name="emails/registration_confirmed.html",
-                context={
-                    "student_name": data.full_name,
-                    "event_title": event["title"],
-                    "ticket_price": ticket_price,
-                    "is_free": ticket_price == 0,
-                    "ticket_code": ticket["ticket_code"] if ticket else None,
-                    "roll_number": data.roll_number,
-                    "department": data.department,
-                    "venue": event["venue"],
-                    "event_time": event["start_time"],
-                    "checkout_url": checkout_url,
-                    "existing_pending": existing_pending,
-                },
-                metadata={"registration_id": reg_id},
-            )
-        if existing_pending and not email_sent:
-            db.execute_write(
-                "UPDATE registrations SET payment_access_token_hash = %s WHERE id = %s",
-                (previous["payment_access_token_hash"], reg_id),
-            )
         if ticket:
             from app.services.ticket_service import ticket_service
             ticket_service.send_ticket_email(ticket)
 
         registration.pop("payment_access_token_hash", None)
-        registration["payment_token"] = None if existing_pending else payment_token
-        registration["existing_pending"] = existing_pending
-        registration["payment_link_sent"] = email_sent
+        registration["payment_token"] = payment_token
+        registration["existing_pending"] = False
+        registration["payment_link_sent"] = False
         return registration
 
     @staticmethod

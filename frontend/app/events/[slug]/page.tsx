@@ -6,7 +6,7 @@ import { api } from "@/lib/api";
 import { errorMessage } from "@/lib/types";
 import type { Event } from "@/lib/types";
 import { registrationAvailability } from "@/lib/registration";
-import { ArrowLeft, ArrowRight, CalendarDays, Check, CircleAlert, Clock, MapPin, ShieldCheck, Ticket, UserRoundCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight, CalendarDays, Check, CircleAlert, Clock, ExternalLink, MapPin, ShieldCheck, Ticket, UserRoundCheck } from "lucide-react";
 import Link from "next/link";
 import RulesModal from "@/components/RulesModal";
 
@@ -24,12 +24,19 @@ export default function EventRegistrationPage() {
   const [phone, setPhone] = useState("");
   const [department, setDepartment] = useState("CSE");
   const [showRulesModal, setShowRulesModal] = useState(false);
+  const [acceptedPrivacy, setAcceptedPrivacy] = useState(false);
   const college = "Sphoorthy Engineering College";
 
   useEffect(() => {
     async function load() {
       try {
-        setEvent(await api.getEventBySlug(slug));
+        let cleanSlug = slug;
+        try {
+          cleanSlug = decodeURIComponent(decodeURIComponent(slug));
+        } catch {
+          cleanSlug = decodeURIComponent(slug);
+        }
+        setEvent(await api.getEventBySlug(cleanSlug));
       } catch (err: unknown) {
         setError(errorMessage(err, "Failed loading event."));
       } finally {
@@ -62,11 +69,6 @@ export default function EventRegistrationPage() {
         college,
       });
       const registration = response.registration;
-      if (response.existing_pending) {
-        setShowRulesModal(false);
-        setNotice("A payment link for your existing pending registration has been sent to your email.");
-        return;
-      }
       const paymentToken = response.payment_token;
       if (!paymentToken) {
         throw new Error("A secure booking link could not be created. Please submit again.");
@@ -235,7 +237,28 @@ export default function EventRegistrationPage() {
                 </select></div>
                 <div className="sm:col-span-2"><label htmlFor="college" className="field-label">Institution</label><input id="college" className="field-control !bg-slate-100" readOnly value={college} /></div>
               </div>
-              <button type="submit" disabled={submitting || ticketPrice === null} className="button-primary button-accent mt-2 w-full !min-h-[52px] disabled:cursor-not-allowed disabled:opacity-50">
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50/90 p-3.5 shadow-sm">
+                <label htmlFor="accept-privacy" className="flex items-start gap-2.5 cursor-pointer select-none">
+                  <input
+                    id="accept-privacy"
+                    type="checkbox"
+                    required
+                    checked={acceptedPrivacy}
+                    onChange={(e) => setAcceptedPrivacy(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-pink-600 focus:ring-pink-500 accent-pink-600 shrink-0"
+                  />
+                  <span className="text-xs text-slate-700 leading-relaxed font-medium">
+                    I have read and agree to the{" "}
+                    <Link href="/privacy" target="_blank" rel="noopener noreferrer" className="font-bold text-pink-700 hover:underline inline-flex items-center gap-0.5">
+                      Privacy Policy <ExternalLink className="h-3 w-3" />
+                    </Link>{" "}
+                    and confirm my student details are accurate.
+                  </span>
+                </label>
+              </div>
+
+              <button type="submit" disabled={submitting || ticketPrice === null || !acceptedPrivacy} className="button-primary button-accent mt-2 w-full !min-h-[52px] disabled:cursor-not-allowed disabled:opacity-50">
                 <ShieldCheck className="h-4 w-4" />{submitting ? "Securing your registration…" : `Continue · ${ticketPrice === null ? "Select an eligible roll number" : ticketPrice > 0 ? `₹${ticketPrice}` : "Free admission"}`}<ArrowRight className="h-4 w-4" />
               </button>
               <p className="text-center text-[10px] leading-5 text-slate-500">Your information is used to create and verify your event ticket.</p>

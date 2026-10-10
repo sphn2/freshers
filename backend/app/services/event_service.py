@@ -4,6 +4,18 @@ from app.db import db
 from app.schemas.event import EventCreate, EventUpdate
 from app.services.audit_service import audit_service
 
+import re
+import unicodedata
+from urllib.parse import unquote
+
+def slugify(text: str) -> str:
+    if not text:
+        return ""
+    text = text.replace("’", "-").replace("‘", "-").replace("“", "").replace("”", "").replace("'", "-")
+    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("utf-8")
+    text = re.sub(r"[^\w\s-]", "", text.lower())
+    return re.sub(r"[-\s]+", "-", text).strip("-")
+
 class EventService:
     @staticmethod
     def _normalize_event(event):
@@ -31,14 +43,42 @@ class EventService:
 
     @staticmethod
     def get_event_by_slug(slug: str):
-        return EventService._normalize_event(db.execute_one("SELECT * FROM events WHERE slug = %s", (slug,)))
+        raw_slug = slug
+        unquoted = unquote(slug)
+        slugified = slugify(unquoted)
+        event = db.execute_one(
+            """SELECT * FROM events
+               WHERE (slug = %s OR slug = %s OR slug = %s
+                      OR LOWER(slug) = LOWER(%s) OR LOWER(slug) = LOWER(%s) OR LOWER(slug) = LOWER(%s))""",
+            (raw_slug, unquoted, slugified, raw_slug, unquoted, slugified),
+        )
+        if not event:
+            events = db.execute_query("SELECT * FROM events")
+            for ev in events:
+                if slugify(ev.get("slug", "")) == slugified or slugify(ev.get("title", "")) == slugified:
+                    event = ev
+                    break
+        return EventService._normalize_event(event)
 
     @staticmethod
     def get_public_event_by_slug(slug: str):
-        return EventService._normalize_event(db.execute_one(
-            "SELECT * FROM events WHERE slug = %s AND status IN ('PUBLISHED', 'LIVE')",
-            (slug,),
-        ))
+        raw_slug = slug
+        unquoted = unquote(slug)
+        slugified = slugify(unquoted)
+        event = db.execute_one(
+            """SELECT * FROM events
+               WHERE (slug = %s OR slug = %s OR slug = %s
+                      OR LOWER(slug) = LOWER(%s) OR LOWER(slug) = LOWER(%s) OR LOWER(slug) = LOWER(%s))
+                 AND status IN ('PUBLISHED', 'LIVE')""",
+            (raw_slug, unquoted, slugified, raw_slug, unquoted, slugified),
+        )
+        if not event:
+            events = db.execute_query("SELECT * FROM events WHERE status IN ('PUBLISHED', 'LIVE')")
+            for ev in events:
+                if slugify(ev.get("slug", "")) == slugified or slugify(ev.get("title", "")) == slugified:
+                    event = ev
+                    break
+        return EventService._normalize_event(event)
 
     @staticmethod
     def get_event_by_id(event_id: str):
@@ -48,11 +88,12 @@ class EventService:
     def create_event(data: EventCreate, created_by_user_id: str = None):
         event_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
+        clean_slug = slugify(data.slug) or slugify(data.title) or data.slug
         
         # Check slug uniqueness
-        existing = db.execute_one("SELECT id FROM events WHERE slug = %s", (data.slug,))
+        existing = db.execute_one("SELECT id FROM events WHERE slug = %s OR slug = %s", (clean_slug, data.slug))
         if existing:
-            raise ValueError(f"Event with slug '{data.slug}' already exists.")
+            raise ValueError(f"Event with slug '{clean_slug}' already exists.")
 
         # Use status from the create payload (DRAFT or PUBLISHED)
         event_status = getattr(data, 'status', 'DRAFT') or 'DRAFT'
@@ -73,7 +114,7 @@ class EventService:
                 %s::boolean, %s::boolean, %s::boolean, %s, %s, %s, %s
             )""",
             (
-                event_id, data.title, data.slug, data.description, data.event_type,
+                event_id, data.title, clean_slug, data.description, data.event_type,
                 data.logo_url, data.banner_url, data.venue,
                 data.start_time.isoformat(), data.end_time.isoformat(),
                 data.registration_start.isoformat(), data.registration_end.isoformat(),
@@ -86,7 +127,7 @@ class EventService:
             )
         )
         
-        audit_service.log("CREATE_EVENT", "event", event_id, created_by_user_id, {"title": data.title, "slug": data.slug, "status": event_status})
+        audit_service.log("CREATE_EVENT", "event", event_id, created_by_user_id, {"title": data.title, "slug": clean_slug, "status": event_status})
         return EventService.get_event_by_id(event_id)
 
     @staticmethod
@@ -98,6 +139,8 @@ class EventService:
         fields = []
         params = []
         for key, value in data.model_dump(exclude_unset=True).items():
+            if key == "slug" and value:
+                value = slugify(str(value))
             if value is not None or key == "other_ticket_price":
                 if isinstance(value, datetime):
                     value = value.isoformat()

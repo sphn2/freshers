@@ -74,6 +74,9 @@ export interface StudentDirectoryRecord extends RegistrationInput {
 export interface PaymentOrder {
   order_id: string;
   amount: number;
+  ticket_price?: number;
+  convenience_fee?: number;
+  convenience_fee_enabled?: boolean;
   currency: string;
   key_id: string;
   registration_id: string;
@@ -200,6 +203,7 @@ export interface EventCreateInput {
   other_ticket_price?: number | null;
   allow_online: boolean;
   allow_offline: boolean;
+  allow_autofill?: boolean;
   registration_open?: boolean | null;
   gate_validation_enabled: boolean;
   food_validation_enabled: boolean;

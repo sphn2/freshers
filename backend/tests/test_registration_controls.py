@@ -102,87 +102,77 @@ def test_manual_registration_override_open_and_close():
             )
 
 
-def test_event_manager_can_update_registration_override_only_for_assigned_event():
+def test_event_manager_cannot_update_event_or_toggle_registrations():
     app = create_app()
     with app.app_context():
         event = event_service.get_event_by_slug("freshers-2k26")
         manager_id = str(uuid.uuid4())
-        original_override = event["registration_open"]
         db.execute_write(
             "INSERT INTO event_managers (id, event_id, user_id, created_at) VALUES (%s, %s, %s, %s)",
             (str(uuid.uuid4()), event["id"], manager_id, datetime.now(timezone.utc).isoformat()),
         )
-        other_event_id = str(uuid.uuid4())
         with app.test_client() as client:
             headers = {
                 "Authorization": "Bearer test-token-event-manager",
                 "X-Test-User-Id": manager_id,
             }
-            allowed = client.patch(
+            res = client.patch(
                 f"/api/v1/admin/events/{event['id']}",
                 json={"registration_open": False},
                 headers=headers,
             )
-            forbidden = client.patch(
-                f"/api/v1/admin/events/{other_event_id}",
-                json={"registration_open": True},
-                headers=headers,
-            )
-
         try:
-            assert allowed.status_code == 200
-            assert allowed.json["event"]["registration_open"] is False
-            assert forbidden.status_code == 403
+            assert res.status_code == 403
+            assert "Forbidden" in res.json["error"]
         finally:
-            db.execute_write(
-                "UPDATE events SET registration_open = %s WHERE id = %s",
-                (original_override, event["id"]),
-            )
             db.execute_write(
                 "DELETE FROM event_managers WHERE user_id = %s AND event_id = %s",
                 (manager_id, event["id"]),
             )
 
 
-def test_event_manager_can_edit_year_specific_prices():
+def test_edit_registration_email_and_resend_ticket():
     app = create_app()
     with app.app_context():
         event = event_service.get_event_by_slug("freshers-2k26")
-        manager_id = str(uuid.uuid4())
-        original = (
-            event["first_year_ticket_price"],
-            event["second_year_ticket_price"],
-            event["other_ticket_price"],
+        reg_id = str(uuid.uuid4())
+        ticket_id = str(uuid.uuid4())
+        now = datetime.now(timezone.utc).isoformat()
+        
+        db.execute_write(
+            """INSERT INTO registrations (id, event_id, full_name, roll_number, email, phone, department, ticket_price, status, created_at)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+            (reg_id, event["id"], "Test Student", "26N81A0599", "old.email@sphoorthy.ac.in", "9876543210", "CSE", 500.0, "PAID", now)
         )
         db.execute_write(
-            "INSERT INTO event_managers (id, event_id, user_id, created_at) VALUES (%s, %s, %s, %s)",
-            (str(uuid.uuid4()), event["id"], manager_id, datetime.now(timezone.utc).isoformat()),
+            """INSERT INTO tickets (id, event_id, registration_id, ticket_code, qr_token, status, created_at)
+               VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+            (ticket_id, event["id"], reg_id, "TEST99", "qr_token_test_99", "ISSUED", now)
         )
+
         with app.test_client() as client:
-            response = client.patch(
-                f"/api/v1/admin/events/{event['id']}",
-                json={
-                    "first_year_ticket_price": 525,
-                    "second_year_ticket_price": 625,
-                    "other_ticket_price": 725,
-                },
-                headers={
-                    "Authorization": "Bearer test-token-event-manager",
-                    "X-Test-User-Id": manager_id,
-                },
+            headers = {"Authorization": "Bearer test-token-admin"}
+            
+            # Edit email
+            edit_res = client.patch(
+                f"/api/v1/admin/registrations/{reg_id}/email",
+                json={"email": "new.email@sphoorthy.ac.in"},
+                headers=headers,
             )
-        try:
-            assert response.status_code == 200
-            assert response.json["event"]["first_year_ticket_price"] == 525
-            assert response.json["event"]["second_year_ticket_price"] == 625
-            assert response.json["event"]["other_ticket_price"] == 725
-        finally:
-            db.execute_write(
-                """UPDATE events SET first_year_ticket_price = %s,
-                   second_year_ticket_price = %s, other_ticket_price = %s WHERE id = %s""",
-                (*original, event["id"]),
+            assert edit_res.status_code == 200
+            assert edit_res.json["email"] == "new.email@sphoorthy.ac.in"
+
+            # Verify DB updated
+            updated_reg = db.execute_one("SELECT email FROM registrations WHERE id = %s", (reg_id,))
+            assert updated_reg["email"] == "new.email@sphoorthy.ac.in"
+
+            # Resend ticket
+            resend_res = client.post(
+                f"/api/v1/admin/registrations/{reg_id}/resend-ticket",
+                headers=headers,
             )
-            db.execute_write(
-                "DELETE FROM event_managers WHERE user_id = %s AND event_id = %s",
-                (manager_id, event["id"]),
-            )
+            assert resend_res.status_code == 200
+            assert "re-sent" in resend_res.json["message"]
+
+        db.execute_write("DELETE FROM tickets WHERE id = %s", (ticket_id,))
+        db.execute_write("DELETE FROM registrations WHERE id = %s", (reg_id,))

@@ -34,6 +34,21 @@ class DatabaseManager:
                 raise RuntimeError("DATABASE_URL is required when SQLite is disabled.")
             try:
                 conn = psycopg2.connect(self.conn_str, connect_timeout=3)
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS system_settings (
+                            key TEXT PRIMARY KEY,
+                            value TEXT NOT NULL,
+                            updated_at TEXT
+                        );
+                        INSERT INTO system_settings (key, value, updated_at)
+                        VALUES ('convenience_fee_enabled', 'true', NOW()::text)
+                        ON CONFLICT(key) DO NOTHING;
+                        INSERT INTO system_settings (key, value, updated_at)
+                        VALUES ('convenience_fee_amount', '3.79', NOW()::text)
+                        ON CONFLICT(key) DO NOTHING;
+                    """)
+                    conn.commit()
                 conn.close()
                 return
             except psycopg2.Error as exc:
@@ -259,6 +274,12 @@ class DatabaseManager:
                 ip_address TEXT,
                 created_at TEXT
             );
+
+            CREATE TABLE IF NOT EXISTS system_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT
+            );
         """)
         additive_columns = {
             "profiles": {
@@ -328,6 +349,20 @@ class DatabaseManager:
             """INSERT INTO profiles (id, email, full_name, created_at)
                VALUES (?, ?, ?, ?) ON CONFLICT(id) DO NOTHING""",
             (system_staff_id, "staff@sphoorthy.ac.in", "System Staff", datetime.now(timezone.utc).isoformat())
+        )
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        self.execute_write(
+            """INSERT INTO system_settings (key, value, updated_at)
+               VALUES ('convenience_fee_enabled', 'true', ?)
+               ON CONFLICT(key) DO NOTHING""",
+            (now_iso,)
+        )
+        self.execute_write(
+            """INSERT INTO system_settings (key, value, updated_at)
+               VALUES ('convenience_fee_amount', '3.79', ?)
+               ON CONFLICT(key) DO NOTHING""",
+            (now_iso,)
         )
 
         if config.SEED_DEMO_DATA and not config.is_production:

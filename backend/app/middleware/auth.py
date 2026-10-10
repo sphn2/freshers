@@ -15,33 +15,67 @@ def parse_auth_header():
     return None
 
 
-def _decode_supabase_token(token: str) -> dict:
-    if config.SUPABASE_JWKS_URL:
-        if not config.SUPABASE_URL:
-            raise ValueError("SUPABASE_URL is required for JWKS validation.")
-        key = _get_jwks_client(config.SUPABASE_JWKS_URL).get_signing_key_from_jwt(token).key
-        algorithms = ["RS256", "ES256"]
-        issuer = f"{config.SUPABASE_URL.rstrip('/')}/auth/v1"
-    elif config.SUPABASE_JWT_SECRET:
-        key = config.SUPABASE_JWT_SECRET
-        algorithms = ["HS256"]
-        issuer = ["supabase", f"{config.SUPABASE_URL.rstrip('/')}/auth/v1"] if config.SUPABASE_URL else "supabase"
-    else:
-        raise ValueError("Supabase JWT verification is not configured.")
-
-    return jwt.decode(
-        token,
-        key,
-        algorithms=algorithms,
-        audience="authenticated",
-        issuer=issuer,
-        options={"require": ["exp", "iat", "sub", "aud", "iss"]},
-    )
+@lru_cache(maxsize=16)
+def _get_signing_key(jwks_url: str, kid: str):
+    jwks_client = _get_jwks_client(jwks_url)
+    return jwks_client.get_signing_key(kid).key
 
 
 @lru_cache(maxsize=8)
 def _get_jwks_client(jwks_url: str):
     return jwt.PyJWKClient(jwks_url, timeout=3)
+
+
+def _decode_supabase_token(token: str) -> dict:
+    header = jwt.get_unverified_header(token)
+    alg = header.get("alg", "HS256")
+
+    if alg in ("RS256", "ES256") or (not config.SUPABASE_JWT_SECRET and (config.SUPABASE_JWKS_URL or config.SUPABASE_URL)):
+        jwks_url = config.SUPABASE_JWKS_URL or (f"{config.SUPABASE_URL.rstrip('/')}/auth/v1/.well-known/jwks.json" if config.SUPABASE_URL else None)
+        kid = header.get("kid")
+        if jwks_url and kid:
+            key = _get_signing_key(jwks_url, kid)
+            issuer = f"{config.SUPABASE_URL.rstrip('/')}/auth/v1" if config.SUPABASE_URL else None
+            options = {"require": ["exp", "iat", "sub", "aud"]}
+            if issuer:
+                options["require"].append("iss")
+            return jwt.decode(
+                token,
+                key,
+                algorithms=["RS256", "ES256", "HS256"],
+                audience="authenticated",
+                issuer=issuer,
+                options=options,
+            )
+
+    if config.SUPABASE_JWT_SECRET:
+        key = config.SUPABASE_JWT_SECRET
+        issuer = ["supabase", f"{config.SUPABASE_URL.rstrip('/')}/auth/v1"] if config.SUPABASE_URL else "supabase"
+        return jwt.decode(
+            token,
+            key,
+            algorithms=["HS256", "RS256", "ES256"],
+            audience="authenticated",
+            issuer=issuer,
+            options={"require": ["exp", "iat", "sub", "aud", "iss"]},
+        )
+    elif config.SUPABASE_JWKS_URL or config.SUPABASE_URL:
+        jwks_url = config.SUPABASE_JWKS_URL or f"{config.SUPABASE_URL.rstrip('/')}/auth/v1/.well-known/jwks.json"
+        kid = header.get("kid")
+        if not kid:
+            raise ValueError("Token missing kid header.")
+        key = _get_signing_key(jwks_url, kid)
+        issuer = f"{config.SUPABASE_URL.rstrip('/')}/auth/v1" if config.SUPABASE_URL else None
+        return jwt.decode(
+            token,
+            key,
+            algorithms=["RS256", "ES256", "HS256"],
+            audience="authenticated",
+            issuer=issuer,
+            options={"require": ["exp", "iat", "sub", "aud"]},
+        )
+    else:
+        raise ValueError("Supabase JWT verification is not configured.")
 
 
 def _set_test_identity(token: str = None) -> bool:
