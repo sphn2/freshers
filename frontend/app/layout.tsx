@@ -12,17 +12,21 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "Sphoorthy Events — Campus, in session",
+  title: "RUdvay Events portal",
   description:
-    "The official campus event calendar, registration and entry platform for Sphoorthy Engineering College.",
+    "The official campus event calendar, registration and entry platform for Sphoorthy Engineering College powered by Rudvay Tech.",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Rudvay Events",
+    title: "RUdvay Events portal",
   },
   icons: {
-    icon: "/icon-192.png",
+    icon: [
+      { url: "/favicon.png", type: "image/png" },
+      { url: "/rudvay_logo.png", type: "image/png" },
+    ],
+    shortcut: "/favicon.png",
     apple: "/apple-icon.png",
   },
 };

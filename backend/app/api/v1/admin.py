@@ -28,11 +28,15 @@ def get_manager_assigned_event_ids(user_id: str) -> list:
         assigned.extend([r["id"] for r in created_rows])
     return list(set(assigned))
 
+def is_event_manager_only() -> bool:
+    """True ONLY if user is strictly an EVENT_MANAGER and does NOT have ADMIN or SUPER_ADMIN roles."""
+    return "EVENT_MANAGER" in g.user_roles and "ADMIN" not in g.user_roles and "SUPER_ADMIN" not in g.user_roles
+
 def enforce_event_access(event_id: str):
-    """If user is EVENT_MANAGER, ensures the event_id is within their assigned scope."""
-    if "ADMIN" in g.user_roles:
+    """If user is strictly EVENT_MANAGER, ensures the event_id is within their assigned scope."""
+    if "ADMIN" in g.user_roles or "SUPER_ADMIN" in g.user_roles:
         return True
-    if "EVENT_MANAGER" in g.user_roles:
+    if is_event_manager_only():
         assigned = get_manager_assigned_event_ids(g.current_user["id"])
         if event_id not in assigned:
             return False
@@ -240,7 +244,7 @@ def set_staff_pin(user_id):
 def get_dashboard_metrics():
     try:
         event_id = request.args.get("event_id")
-        if "EVENT_MANAGER" in g.user_roles and not event_id:
+        if is_event_manager_only() and not event_id:
             return jsonify({"error": "Event managers must select an assigned event."}), 400
         if event_id and not enforce_event_access(event_id):
             return jsonify({"error": "Forbidden. Event not assigned to you."}), 403
@@ -254,7 +258,7 @@ def get_dashboard_metrics():
 def report_registrations():
     try:
         event_id = request.args.get("event_id")
-        if "EVENT_MANAGER" in g.user_roles and not event_id:
+        if is_event_manager_only() and not event_id:
             return jsonify({"error": "Event managers must select an assigned event."}), 400
         if event_id and not enforce_event_access(event_id):
             return jsonify({"error": "Forbidden. Event not assigned to you."}), 403
@@ -330,7 +334,7 @@ def resend_all_tickets():
         body = request.get_json() or {}
         event_id = body.get("event_id") or request.args.get("event_id")
 
-        if "EVENT_MANAGER" in g.user_roles and not event_id:
+        if is_event_manager_only() and not event_id:
             return jsonify({"error": "Event managers must select an assigned event to resend tickets."}), 400
         if event_id and not enforce_event_access(event_id):
             return jsonify({"error": "Forbidden. Event not assigned to you."}), 403
@@ -496,7 +500,7 @@ def report_email_logs():
 def export_csv():
     try:
         event_id = request.args.get("event_id")
-        if "EVENT_MANAGER" in g.user_roles and not event_id:
+        if is_event_manager_only() and not event_id:
             return jsonify({"error": "Event managers must select an assigned event."}), 400
         if event_id and not enforce_event_access(event_id):
             return jsonify({"error": "Forbidden. Event not assigned to you."}), 403
@@ -515,7 +519,7 @@ def export_csv():
 def report_payments():
     try:
         event_id = request.args.get("event_id")
-        if "EVENT_MANAGER" in g.user_roles and not event_id:
+        if is_event_manager_only() and not event_id:
             return jsonify({"error": "Event managers must select an assigned event."}), 400
         if event_id and not enforce_event_access(event_id):
             return jsonify({"error": "Forbidden. Event not assigned to you."}), 403
@@ -530,7 +534,7 @@ def report_payments():
 def report_entries():
     try:
         event_id = request.args.get("event_id")
-        if "EVENT_MANAGER" in g.user_roles and not event_id:
+        if is_event_manager_only() and not event_id:
             return jsonify({"error": "Event managers must select an assigned event."}), 400
         if event_id and not enforce_event_access(event_id):
             return jsonify({"error": "Forbidden. Event not assigned to you."}), 403
@@ -545,7 +549,7 @@ def report_entries():
 def report_offline():
     try:
         event_id = request.args.get("event_id")
-        if "EVENT_MANAGER" in g.user_roles and not event_id:
+        if is_event_manager_only() and not event_id:
             return jsonify({"error": "Event managers must select an assigned event."}), 400
         if event_id and not enforce_event_access(event_id):
             return jsonify({"error": "Forbidden. Event not assigned to you."}), 403
