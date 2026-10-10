@@ -104,7 +104,10 @@ def auth_middleware():
         g.current_user = None
         g.auth_error = 503
         return
-    g.user_roles = [row["name"] for row in roles_rows] if roles_rows else ["STUDENT"]
+    user_roles_list = [row["name"] for row in roles_rows] if roles_rows else ["STUDENT"]
+    if "SUPER_ADMIN" in user_roles_list and "ADMIN" not in user_roles_list:
+        user_roles_list.append("ADMIN")
+    g.user_roles = user_roles_list
 
 
 def require_auth(f):

@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { getApiBaseUrl } from "@/lib/api-url";
 
-export type Role = "STUDENT" | "GATE_STAFF" | "FOOD_STAFF" | "OFFLINE_COLLECTOR" | "EVENT_MANAGER" | "ADMIN";
+export type Role = "SUPER_ADMIN" | "ADMIN" | "EVENT_MANAGER" | "OFFLINE_COLLECTOR" | "GATE_STAFF" | "FOOD_STAFF" | "STUDENT";
 
 interface AuthUser {
   id: string;
@@ -27,7 +27,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 function selectRole(roles: string[]): Role {
-  const supported: Role[] = ["ADMIN", "EVENT_MANAGER", "OFFLINE_COLLECTOR", "GATE_STAFF", "FOOD_STAFF", "STUDENT"];
+  const supported: Role[] = ["SUPER_ADMIN", "ADMIN", "EVENT_MANAGER", "OFFLINE_COLLECTOR", "GATE_STAFF", "FOOD_STAFF", "STUDENT"];
   return supported.find((candidate) => roles.includes(candidate)) || "STUDENT";
 }
 
@@ -112,7 +112,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     router.push("/");
   };
 
-  return <AuthContext.Provider value={{ user, role, token, loading, login, logout, hasRole: (roles) => roles.includes(role) }}>{children}</AuthContext.Provider>;
+  const checkRole = (allowedRoles: Role[]) => {
+    if (role === "SUPER_ADMIN") return true;
+    return allowedRoles.includes(role);
+  };
+
+  return <AuthContext.Provider value={{ user, role, token, loading, login, logout, hasRole: checkRole }}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {

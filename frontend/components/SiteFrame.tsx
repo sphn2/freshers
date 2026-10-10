@@ -56,7 +56,7 @@ function SiteFrame({ children }: { children: React.ReactNode }) {
     links = [
       { href: "/offline", label: "Cash Desk", icon: Banknote },
     ];
-  } else if (role === "ADMIN" || role === "EVENT_MANAGER") {
+  } else if (role === "SUPER_ADMIN" || role === "ADMIN" || role === "EVENT_MANAGER") {
     links = [
       { href: "/", label: "What's on", icon: CalendarDays },
       { href: "/scanner/gate", label: "Gate Desk", icon: QrCode },

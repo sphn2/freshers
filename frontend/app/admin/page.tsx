@@ -22,7 +22,7 @@ import {
 
 export default function AdminDashboardPage() {
   return (
-    <ProtectedRoute allowedRoles={["ADMIN", "EVENT_MANAGER"]}>
+    <ProtectedRoute allowedRoles={["SUPER_ADMIN", "ADMIN", "EVENT_MANAGER"]}>
       <AdminDashboardContent />
     </ProtectedRoute>
   );
@@ -32,6 +32,7 @@ type Tab = "overview" | "registrations" | "payments" | "entries" | "offline" | "
 
 function AdminDashboardContent() {
   const { role } = useAuth();
+  const isAdmin = role === "SUPER_ADMIN" || role === "ADMIN";
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [reportData, setReportData] = useState<ReportRow[]>([]);
@@ -105,7 +106,7 @@ function AdminDashboardContent() {
         setStatusMsg("No events are assigned to your account.");
         return;
       }
-      if (role === "ADMIN") {
+      if (isAdmin) {
         const [mData, logsData] = await Promise.all([
           api.getAdminMetrics(eventId || undefined),
           api.getAuditLogs(20),
@@ -286,7 +287,7 @@ function AdminDashboardContent() {
     { key: "offline", label: "Offline Cash", icon: <Banknote className="w-4 h-4" />, color: "text-pink-600" },
     { key: "audit", label: "Audit Logs", icon: <Activity className="w-4 h-4" />, color: "text-rose-600" },
   ];
-  const visibleTabs = role === "ADMIN"
+  const visibleTabs = isAdmin
     ? tabs
     : tabs.filter((tab) => tab.key !== "audit" && tab.key !== "accounts");
 
@@ -320,7 +321,7 @@ function AdminDashboardContent() {
                 }}
                 className="field-control !min-h-10 !w-auto !border-white/25 !bg-white/10 !text-white"
               >
-                {role === "ADMIN" && <option value="" className="text-slate-900">All events</option>}
+                {isAdmin && <option value="" className="text-slate-900">All events</option>}
                 {events.map((event) => <option key={event.id} value={event.id} className="text-slate-900">{event.title}</option>)}
               </select>
             )}
@@ -446,7 +447,7 @@ function AdminDashboardContent() {
         <div className="space-y-4">
           <div className="flex items-end justify-between gap-4 border-b border-slate-300 pb-4">
             <div><p className="eyebrow">Programme</p><h2 className="editorial-title mt-2 text-3xl">Event desk</h2><p className="mt-1 text-xs text-slate-500">{events.length} event{events.length === 1 ? "" : "s"} in view</p></div>
-            {role === "ADMIN" && (
+            {isAdmin && (
               <button
                 onClick={() => setShowCreateForm(!showCreateForm)}
                 className="button-primary button-accent !min-h-10 !px-4 !text-[10px]"
@@ -723,7 +724,7 @@ function AdminDashboardContent() {
         </div>
       )}
 
-      {activeTab === "accounts" && role === "ADMIN" && (
+      {activeTab === "accounts" && isAdmin && (
         <section className="mx-auto max-w-3xl space-y-5">
           <div>
             <p className="eyebrow">Access control</p>
