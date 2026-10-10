@@ -239,6 +239,11 @@ function AdminDashboardContent() {
     event.preventDefault();
     setCreatingStaff(true);
     setStatusMsg(null);
+    if (staffForm.password.length < 12) {
+      setStatusMsg("❌ Password must be at least 12 characters long.");
+      setCreatingStaff(false);
+      return;
+    }
     try {
       const payload = {
         full_name: staffForm.full_name.trim(),

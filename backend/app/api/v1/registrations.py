@@ -4,7 +4,7 @@ from app.schemas.registration import RegistrationCreate
 from app.services.registration_service import registration_service
 from app.middleware.rate_limit import rate_limit
 from app.middleware.auth import auth_middleware
-from app.api.v1.errors import internal_error
+from app.api.v1.errors import format_validation_error, internal_error
 
 registrations_bp = Blueprint("registrations", __name__, url_prefix="/api/v1")
 
@@ -37,7 +37,7 @@ def register_student(event_id):
             "payment_link_sent": payment_link_sent,
         }), 200 if existing_pending else 201
     except ValidationError as e:
-        return jsonify({"error": "Validation error", "details": e.errors()}), 422
+        return jsonify({"error": format_validation_error(e), "details": e.errors()}), 422
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
     except Exception:

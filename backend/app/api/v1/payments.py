@@ -5,7 +5,7 @@ from app.services.payment_service import payment_service
 from app.middleware.auth import auth_middleware
 from app.middleware.rate_limit import rate_limit
 from app.db import db
-from app.api.v1.errors import internal_error
+from app.api.v1.errors import format_validation_error, internal_error
 from app.utils.payment_access import registration_token_matches
 
 payments_bp = Blueprint("payments", __name__, url_prefix="/api/v1")
@@ -36,7 +36,7 @@ def create_order():
         res = payment_service.create_order(data.registration_id)
         return jsonify(res), 200
     except ValidationError as e:
-        return jsonify({"error": "Validation error", "details": e.errors()}), 422
+        return jsonify({"error": format_validation_error(e), "details": e.errors()}), 422
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
     except Exception:
@@ -58,7 +58,7 @@ def verify_payment():
         )
         return jsonify(res), 200
     except ValidationError as e:
-        return jsonify({"error": "Validation error", "details": e.errors()}), 422
+        return jsonify({"error": format_validation_error(e), "details": e.errors()}), 422
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
     except Exception:

@@ -3,7 +3,7 @@ from pydantic import ValidationError
 from app.schemas.validation import GateValidationRequest, FoodValidationRequest
 from app.services.validation_service import validation_service
 from app.middleware.auth import require_roles
-from app.api.v1.errors import internal_error
+from app.api.v1.errors import format_validation_error, internal_error
 from app.db import db
 
 validation_bp = Blueprint("validation", __name__, url_prefix="/api/v1/validation")
@@ -35,7 +35,7 @@ def validate_gate():
         res = validation_service.validate_gate(data, staff_user_id=staff_id)
         return jsonify(res.model_dump()), 200
     except ValidationError as e:
-        return jsonify({"error": "Validation error", "details": e.errors()}), 422
+        return jsonify({"error": format_validation_error(e), "details": e.errors()}), 422
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
     except Exception:
@@ -56,7 +56,7 @@ def validate_food():
         res = validation_service.validate_food(data, staff_user_id=staff_id)
         return jsonify(res.model_dump()), 200
     except ValidationError as e:
-        return jsonify({"error": "Validation error", "details": e.errors()}), 422
+        return jsonify({"error": format_validation_error(e), "details": e.errors()}), 422
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
     except Exception:

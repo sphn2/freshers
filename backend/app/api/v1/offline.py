@@ -3,7 +3,7 @@ from pydantic import ValidationError
 from app.schemas.offline import OfflineRegistrationRequest
 from app.services.offline_service import offline_service
 from app.middleware.auth import require_roles
-from app.api.v1.errors import internal_error
+from app.api.v1.errors import format_validation_error, internal_error
 
 offline_bp = Blueprint("offline", __name__, url_prefix="/api/v1/offline")
 
@@ -16,7 +16,7 @@ def offline_register():
         res = offline_service.register_offline_cash(data, collector_user_id=collector_id)
         return jsonify(res.model_dump()), 201
     except ValidationError as e:
-        return jsonify({"error": "Validation error", "details": e.errors()}), 422
+        return jsonify({"error": format_validation_error(e), "details": e.errors()}), 422
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
     except Exception:

@@ -41,10 +41,28 @@ export async function apiFetch<T>(
   const data: unknown = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    const message =
-      typeof data === "object" && data !== null && "error" in data && typeof data.error === "string"
-        ? data.error
-        : `HTTP ${response.status}: Request failed`;
+    let message = `HTTP ${response.status}: Request failed`;
+    if (typeof data === "object" && data !== null) {
+      if ("error" in data && typeof data.error === "string") {
+        message = data.error;
+      }
+      if (
+        "details" in data &&
+        Array.isArray(data.details) &&
+        data.details.length > 0 &&
+        (!("error" in data) || data.error === "Validation error")
+      ) {
+        const detailMsgs = (data.details as Array<{ loc?: string[]; msg?: string }>)
+          .map((d) => {
+            const field = Array.isArray(d.loc) && d.loc.length > 0 ? d.loc[d.loc.length - 1] : "";
+            return d.msg ? `${field ? field + ": " : ""}${d.msg}` : null;
+          })
+          .filter(Boolean);
+        if (detailMsgs.length > 0) {
+          message = `Validation error: ${detailMsgs.join("; ")}`;
+        }
+      }
+    }
     throw new Error(message);
   }
 

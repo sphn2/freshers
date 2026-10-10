@@ -8,7 +8,7 @@ from app.services.staff_account_service import StaffAccountError, staff_account_
 from app.services.report_service import report_service
 from app.middleware.auth import require_roles
 from app.db import db
-from app.api.v1.errors import internal_error
+from app.api.v1.errors import format_validation_error, internal_error
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/api/v1/admin")
 
@@ -47,7 +47,7 @@ def create_event():
         event = event_service.create_event(data, created_by_user_id=user_id)
         return jsonify({"message": "Event created successfully.", "event": event}), 201
     except ValidationError as e:
-        return jsonify({"error": "Validation error", "details": e.errors()}), 422
+        return jsonify({"error": format_validation_error(e), "details": e.errors()}), 422
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
     except Exception:
@@ -78,7 +78,7 @@ def update_event(event_id):
         event = event_service.update_event(event_id, data, user_id=user_id)
         return jsonify({"message": "Event updated successfully.", "event": event}), 200
     except ValidationError as e:
-        return jsonify({"error": "Validation error", "details": e.errors()}), 422
+        return jsonify({"error": format_validation_error(e), "details": e.errors()}), 422
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
     except Exception:
@@ -95,7 +95,7 @@ def create_staff_account():
         )
         return jsonify({"message": "Staff account created successfully.", "account": account}), 201
     except ValidationError as e:
-        return jsonify({"error": "Validation error", "details": e.errors()}), 422
+        return jsonify({"error": format_validation_error(e), "details": e.errors()}), 422
     except StaffAccountError as e:
         return jsonify({"error": str(e)}), e.status_code
     except Exception:
