@@ -30,20 +30,41 @@ export function SiteProviderFrame({ children }: { children: React.ReactNode }) {
 
 function SiteFrame({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { user, role, logout, hasRole } = useAuth();
+  const { user, role, logout } = useAuth();
   const [currentYear, setCurrentYear] = useState<number>(2026);
 
   useEffect(() => {
     setCurrentYear(new Date().getFullYear());
   }, []);
 
-  const links = [
-    { href: "/", label: "What's on", icon: CalendarDays, visible: true },
-    { href: "/scanner/gate", label: "Gate", icon: QrCode, visible: hasRole(["GATE_STAFF", "ADMIN", "EVENT_MANAGER"]) },
-    { href: "/scanner/food", label: "Food", icon: Utensils, visible: hasRole(["FOOD_STAFF", "ADMIN", "EVENT_MANAGER"]) },
-    { href: "/offline", label: "Cash desk", icon: Banknote, visible: hasRole(["OFFLINE_COLLECTOR", "ADMIN"]) },
-    { href: "/admin", label: "Operations", icon: ShieldCheck, visible: hasRole(["ADMIN", "EVENT_MANAGER"]) },
-  ].filter((item) => item.visible);
+  // Strict role-isolated navigation links: GATE_STAFF sees ONLY Gate Desk, FOOD_STAFF sees ONLY Food Counter
+  let links: { href: string; label: string; icon: React.ElementType }[] = [];
+
+  if (!user || role === "STUDENT") {
+    links = [
+      { href: "/", label: "What's on", icon: CalendarDays },
+    ];
+  } else if (role === "GATE_STAFF") {
+    links = [
+      { href: "/scanner/gate", label: "Gate Entry Desk", icon: QrCode },
+    ];
+  } else if (role === "FOOD_STAFF") {
+    links = [
+      { href: "/scanner/food", label: "Food Counter Desk", icon: Utensils },
+    ];
+  } else if (role === "OFFLINE_COLLECTOR") {
+    links = [
+      { href: "/offline", label: "Cash Desk", icon: Banknote },
+    ];
+  } else if (role === "ADMIN" || role === "EVENT_MANAGER") {
+    links = [
+      { href: "/", label: "What's on", icon: CalendarDays },
+      { href: "/scanner/gate", label: "Gate Desk", icon: QrCode },
+      { href: "/scanner/food", label: "Food Counter", icon: Utensils },
+      { href: "/offline", label: "Cash Desk", icon: Banknote },
+      { href: "/admin", label: "Operations", icon: ShieldCheck },
+    ];
+  }
 
   return (
     <>
@@ -75,13 +96,13 @@ function SiteFrame({ children }: { children: React.ReactNode }) {
               <>
                 <div className="text-right">
                   <p className="text-xs font-bold text-slate-900">{user.full_name}</p>
-                  <p className="mt-0.5 text-[9px] font-extrabold tracking-[.12em] text-slate-500">{role.replaceAll("_", " ")}</p>
+                  <p className="mt-0.5 text-[9px] font-extrabold tracking-[.12em] text-[#b1840e] uppercase">{role.replaceAll("_", " ")}</p>
                 </div>
                 <button
                   type="button"
                   aria-label="Sign out"
                   onClick={() => void logout()}
-                  className="grid h-9 w-9 place-items-center border border-slate-300 bg-transparent text-slate-700 transition hover:bg-slate-100"
+                  className="grid h-9 w-9 place-items-center border border-slate-300 bg-transparent text-slate-700 transition hover:bg-slate-100 rounded-md"
                 >
                   <LogOut className="h-4 w-4" />
                 </button>
@@ -243,14 +264,14 @@ function SiteFrame({ children }: { children: React.ReactNode }) {
         </div>
       </footer>
 
-      {user && (
+      {user && links.length > 0 && (
         <nav aria-label="Staff shortcuts" className="fixed inset-x-0 bottom-0 z-50 border-t border-slate-200 bg-[#fbf9f4]/95 px-2 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 backdrop-blur md:hidden">
           <div className="mx-auto flex max-w-xl items-center justify-around">
             {links.map(({ href, label, icon: Icon }) => (
               <Link
                 key={href}
                 href={href}
-                className={`flex min-w-0 flex-1 flex-col items-center gap-1 px-1 py-1 text-center text-[9px] font-bold leading-tight ${pathname === href ? "text-pink-700" : "text-slate-500"}`}
+                className={`flex min-w-0 flex-1 flex-col items-center gap-1 px-1 py-1 text-center text-[9px] font-bold leading-tight ${pathname === href ? "text-amber-700 font-extrabold" : "text-slate-500"}`}
               >
                 <Icon className="h-[18px] w-[18px]" />
                 {label}
