@@ -93,6 +93,7 @@ from app.services.audit_service import audit_service
 def handle_staff_accounts():
     if request.method == "GET":
         try:
+            is_super_admin = "SUPER_ADMIN" in g.user_roles
             profiles = db.execute_query(
                 """SELECT p.id, p.full_name, p.email, (p.pin_hash IS NOT NULL AND p.pin_hash != '') as has_pin, p.created_at
                    FROM profiles p
@@ -111,6 +112,9 @@ def handle_staff_accounts():
             valid_roles = ('SUPER_ADMIN', 'ADMIN', 'EVENT_MANAGER', 'OFFLINE_COLLECTOR', 'GATE_STAFF', 'FOOD_STAFF')
             for p in profiles:
                 roles = user_roles_map.get(p["id"], [])
+                # Hide Super Admin accounts from ordinary Admins
+                if not is_super_admin and "SUPER_ADMIN" in roles:
+                    continue
                 if any(r in valid_roles for r in roles):
                     primary_role = "STUDENT"
                     for r in valid_roles:
@@ -202,7 +206,7 @@ def update_staff_roles(user_id):
         return internal_error("updating staff privileges")
 
 @admin_bp.route("/staff-accounts/<user_id>/pin", methods=["POST", "PATCH"])
-@require_roles("ADMIN", "SUPER_ADMIN")
+@require_roles("SUPER_ADMIN")
 def set_staff_pin(user_id):
     try:
         body = request.get_json() or {}

@@ -903,7 +903,7 @@ function AdminDashboardContent() {
                 <span>College Admin View (Read-Only Privilege Directory)</span>
               </div>
               <p className="text-xs text-amber-800 leading-relaxed">
-                As a College Admin, you can review all registered staff members and inspect their active access privileges below (what operations they can perform). Creating new staff accounts and modifying privilege toggles are restricted to <strong>Super Admin</strong>.
+                As a College Admin, you can review all registered staff members and inspect their active access privileges below (what operations they can perform). Creating new staff accounts and modifying privilege toggles are managed by the Tech Team.
               </p>
             </div>
           )}
@@ -925,7 +925,7 @@ function AdminDashboardContent() {
               </button>
             </div>
 
-            {pinModalUser && (
+            {pinModalUser && isSuperAdmin && (
               <form onSubmit={handleSavePin} className="border-2 border-blue-500 bg-blue-50 p-5 rounded-2xl space-y-3 shadow-md">
                 <div className="flex items-center justify-between">
                   <div className="font-extrabold text-sm text-blue-900 flex items-center gap-2">
@@ -970,14 +970,26 @@ function AdminDashboardContent() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {staffAccounts.length === 0 ? (
-                      <tr>
-                        <td colSpan={8} className="px-4 py-8 text-center text-slate-400 font-medium">
-                          {loadingStaff ? "Loading staff members..." : "No staff accounts found."}
-                        </td>
-                      </tr>
-                    ) : (
-                      staffAccounts.map((account) => {
+                    {(() => {
+                      const visibleAccounts = isSuperAdmin
+                        ? staffAccounts
+                        : staffAccounts.filter(
+                            (acc) =>
+                              !(acc.roles || [acc.role]).includes("SUPER_ADMIN") &&
+                              acc.role !== "SUPER_ADMIN"
+                          );
+
+                      if (visibleAccounts.length === 0) {
+                        return (
+                          <tr>
+                            <td colSpan={8} className="px-4 py-8 text-center text-slate-400 font-medium">
+                              {loadingStaff ? "Loading staff members..." : "No staff accounts found."}
+                            </td>
+                          </tr>
+                        );
+                      }
+
+                      return visibleAccounts.map((account) => {
                         const accountRoles = account.roles || [account.role];
 
                         const renderPrivilegeToggle = (roleName: string, label: string) => {
@@ -1044,21 +1056,25 @@ function AdminDashboardContent() {
                               )}
                             </td>
                             <td className="px-4 py-3 text-right">
-                              <button
-                                onClick={() => {
-                                  setPinModalUser(account);
-                                  setPinInputValue("");
-                                }}
-                                className="px-2.5 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 font-bold rounded-md text-[10px] inline-flex items-center gap-1 transition"
-                              >
-                                <KeyRound className="w-3 h-3" />
-                                <span>{account.has_pin ? "Reset PIN" : "Set PIN"}</span>
-                              </button>
+                              {isSuperAdmin ? (
+                                <button
+                                  onClick={() => {
+                                    setPinModalUser(account);
+                                    setPinInputValue("");
+                                  }}
+                                  className="px-2.5 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 font-bold rounded-md text-[10px] inline-flex items-center gap-1 transition"
+                                >
+                                  <KeyRound className="w-3 h-3" />
+                                  <span>{account.has_pin ? "Reset PIN" : "Set PIN"}</span>
+                                </button>
+                              ) : (
+                                <span className="text-slate-400 font-medium">—</span>
+                              )}
                             </td>
                           </tr>
                         );
-                      })
-                    )}
+                      });
+                    })()}
                   </tbody>
                 </table>
               </div>
