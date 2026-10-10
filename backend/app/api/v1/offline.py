@@ -8,7 +8,7 @@ from app.api.v1.errors import format_validation_error, internal_error
 offline_bp = Blueprint("offline", __name__, url_prefix="/api/v1/offline")
 
 @offline_bp.route("/registrations", methods=["POST"])
-@require_roles("OFFLINE_COLLECTOR", "ADMIN")
+@require_roles("OFFLINE_COLLECTOR", "ADMIN", "EVENT_MANAGER", "SUPER_ADMIN")
 def offline_register():
     try:
         data = OfflineRegistrationRequest(**(request.get_json() or {}))
@@ -23,7 +23,7 @@ def offline_register():
         return internal_error("processing an offline registration")
 
 @offline_bp.route("/summary", methods=["GET"])
-@require_roles("OFFLINE_COLLECTOR", "ADMIN")
+@require_roles("OFFLINE_COLLECTOR", "ADMIN", "EVENT_MANAGER", "SUPER_ADMIN")
 def collector_summary():
     try:
         collector_id = g.current_user["id"]

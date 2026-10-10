@@ -149,6 +149,12 @@ export default function DigitalTicketPage() {
                 </span>
               </div>
             )}
+            {ticket.issued_by && (
+              <div className="flex justify-between items-center border-t border-slate-200 pt-2">
+                <span className="text-slate-500 font-medium">Issued By</span>
+                <span className="text-slate-900 font-bold">{ticket.issued_by}</span>
+              </div>
+            )}
           </div>
         </div>
 

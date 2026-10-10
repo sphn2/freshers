@@ -84,8 +84,28 @@ def update_event(event_id):
     except Exception:
         return internal_error("updating an event")
 
+from datetime import datetime, timezone
+from werkzeug.security import generate_password_hash
+from app.services.audit_service import audit_service
+
+@admin_bp.route("/staff-accounts", methods=["GET"])
+@require_roles("ADMIN", "SUPER_ADMIN")
+def list_staff_accounts():
+    try:
+        rows = db.execute_query(
+            """SELECT p.id, p.full_name, p.email, r.name as role, (p.pin_hash IS NOT NULL AND p.pin_hash != '') as has_pin, p.created_at
+               FROM profiles p
+               JOIN user_roles ur ON p.id = ur.user_id
+               JOIN roles r ON ur.role_id = r.id
+               WHERE r.name IN ('SUPER_ADMIN', 'ADMIN', 'EVENT_MANAGER', 'OFFLINE_COLLECTOR', 'GATE_STAFF', 'FOOD_STAFF')
+               ORDER BY p.created_at DESC"""
+        )
+        return jsonify({"staff_accounts": rows}), 200
+    except Exception:
+        return internal_error("fetching staff accounts")
+
 @admin_bp.route("/staff-accounts", methods=["POST"])
-@require_roles("ADMIN")
+@require_roles("ADMIN", "SUPER_ADMIN")
 def create_staff_account():
     try:
         data = StaffAccountCreate(**(request.get_json() or {}))
@@ -100,6 +120,36 @@ def create_staff_account():
         return jsonify({"error": str(e)}), e.status_code
     except Exception:
         return internal_error("creating a staff account")
+
+@admin_bp.route("/staff-accounts/<user_id>/pin", methods=["POST", "PATCH"])
+@require_roles("ADMIN", "SUPER_ADMIN")
+def set_staff_pin(user_id):
+    try:
+        body = request.get_json() or {}
+        pin = str(body.get("pin", "")).strip()
+        if len(pin) != 6 or not pin.isdigit():
+            return jsonify({"error": "PIN must be exactly 6 digits."}), 400
+        
+        target = db.execute_one("SELECT id, full_name, email FROM profiles WHERE id = %s", (user_id,))
+        if not target:
+            return jsonify({"error": "Staff profile not found."}), 404
+
+        pin_hash = generate_password_hash(pin)
+        now = datetime.now(timezone.utc).isoformat()
+        db.execute_write(
+            "UPDATE profiles SET pin_hash = %s, updated_at = %s WHERE id = %s",
+            (pin_hash, now, user_id),
+        )
+        audit_service.log(
+            "SET_STAFF_PIN",
+            "profile",
+            user_id,
+            g.current_user["id"],
+            {"staff_name": target["full_name"], "staff_email": target["email"]},
+        )
+        return jsonify({"message": f"6-Digit PIN successfully updated for {target['full_name']}."}), 200
+    except Exception:
+        return internal_error("setting staff PIN")
 
 @admin_bp.route("/dashboard", methods=["GET"])
 @require_roles("ADMIN", "EVENT_MANAGER")

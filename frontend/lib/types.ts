@@ -106,6 +106,7 @@ export interface Ticket {
   start_time: string;
   food_status: string | null;
   food_validated_at: string | null;
+  issued_by?: string | null;
 }
 
 export interface ValidationResult {
@@ -123,7 +124,17 @@ export interface ValidationResult {
 export interface OfflineRegistrationInput extends RegistrationInput {
   event_id: string;
   amount_paid: number;
+  pin: string;
   receipt_number?: string;
+}
+
+export interface StaffAccount {
+  id: string;
+  full_name: string;
+  email: string;
+  role: string;
+  has_pin: boolean;
+  created_at: string;
 }
 
 export interface OfflineRegistrationResult {

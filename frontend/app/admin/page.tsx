@@ -12,12 +12,13 @@ import type {
   EventCreateInput,
   EventStatus,
   ReportRow,
+  StaffAccount,
 } from "@/lib/types";
 import {
   LayoutDashboard, ShieldCheck, DollarSign, Users, Ticket, Activity,
   FileSpreadsheet, Plus, RefreshCw, CheckCircle2, QrCode,
   CreditCard, Banknote, Settings, AlertCircle, Pause, Play, CalendarClock,
-  UserRoundPlus
+  UserRoundPlus, KeyRound
 } from "lucide-react";
 
 export default function AdminDashboardPage() {
@@ -69,6 +70,11 @@ function AdminDashboardContent() {
   });
   const [creatingStaff, setCreatingStaff] = useState(false);
   const [secureContext, setSecureContext] = useState(false);
+  const [staffAccounts, setStaffAccounts] = useState<StaffAccount[]>([]);
+  const [loadingStaff, setLoadingStaff] = useState(false);
+  const [pinModalUser, setPinModalUser] = useState<StaffAccount | null>(null);
+  const [pinInputValue, setPinInputValue] = useState("");
+  const [settingPin, setSettingPin] = useState(false);
 
   useEffect(() => {
     setSecureContext(
@@ -87,6 +93,8 @@ function AdminDashboardContent() {
       loadReport(activeTab);
     } else if (activeTab === "events") {
       loadEvents();
+    } else if (activeTab === "accounts" && isAdmin) {
+      void loadStaffAccounts();
     }
   }, [activeTab, selectedEventId]);
 
@@ -256,10 +264,44 @@ function AdminDashboardContent() {
       const result = await api.createStaffAccount(payload);
       setStatusMsg(`✅ ${result.account.full_name} was created in Supabase Auth with the ${result.account.role.replaceAll("_", " ")} role.`);
       setStaffForm({ full_name: "", email: "", password: "", role: "GATE_STAFF", event_id: "" });
+      void loadStaffAccounts();
     } catch (err: unknown) {
       setStatusMsg(`❌ ${errorMessage(err, "Failed creating staff account.")}`);
     } finally {
       setCreatingStaff(false);
+    }
+  };
+
+  const loadStaffAccounts = async () => {
+    setLoadingStaff(true);
+    try {
+      const data = await api.listStaffAccounts();
+      setStaffAccounts(data.staff_accounts);
+    } catch (err: unknown) {
+      setStatusMsg(`❌ ${errorMessage(err, "Failed loading staff accounts.")}`);
+    } finally {
+      setLoadingStaff(false);
+    }
+  };
+
+  const handleSavePin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pinModalUser) return;
+    if (pinInputValue.length !== 6 || !/^\d{6}$/.test(pinInputValue)) {
+      setStatusMsg("❌ Authorization PIN must be exactly 6 digits.");
+      return;
+    }
+    setSettingPin(true);
+    try {
+      const res = await api.setStaffPin(pinModalUser.id, pinInputValue);
+      setStatusMsg(`✅ ${res.message}`);
+      setPinModalUser(null);
+      setPinInputValue("");
+      void loadStaffAccounts();
+    } catch (err: unknown) {
+      setStatusMsg(`❌ ${errorMessage(err, "Failed updating staff PIN.")}`);
+    } finally {
+      setSettingPin(false);
     }
   };
 
@@ -819,6 +861,100 @@ function AdminDashboardContent() {
               {creatingStaff ? "Creating account…" : "Create Supabase account"}
             </button>
           </form>
+
+          {/* STAFF ACCOUNTS & PIN MANAGEMENT LIST */}
+          <div className="space-y-4 pt-6 border-t border-slate-200">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Staff Members & Authorization PINs</h3>
+                <p className="text-xs text-slate-500">Super Admin and Admins can set or reset 6-digit cash desk authorization PINs for Event Managers and Staff.</p>
+              </div>
+              <button onClick={() => void loadStaffAccounts()} className="px-3 py-1.5 bg-slate-100 text-slate-700 text-xs font-bold rounded-lg flex items-center gap-1.5 transition hover:bg-slate-200">
+                <RefreshCw className={`w-3.5 h-3.5 ${loadingStaff ? "animate-spin" : ""}`} />
+              </button>
+            </div>
+
+            {pinModalUser && (
+              <form onSubmit={handleSavePin} className="border-2 border-blue-500 bg-blue-50 p-5 rounded-2xl space-y-3 shadow-md">
+                <div className="flex items-center justify-between">
+                  <div className="font-extrabold text-sm text-blue-900 flex items-center gap-2">
+                    <KeyRound className="w-4 h-4 text-blue-700" />
+                    <span>Set 6-Digit Authorization PIN for {pinModalUser.full_name} ({pinModalUser.role.replace(/_/g, " ")})</span>
+                  </div>
+                  <button type="button" onClick={() => setPinModalUser(null)} className="text-xs text-slate-500 font-bold hover:text-slate-800">Cancel</button>
+                </div>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    maxLength={6}
+                    pattern="\d{6}"
+                    inputMode="numeric"
+                    placeholder="Enter 6-digit PIN"
+                    value={pinInputValue}
+                    onChange={(e) => setPinInputValue(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    className="field-control max-w-xs font-mono text-center tracking-widest text-lg"
+                  />
+                  <button type="submit" disabled={settingPin || pinInputValue.length !== 6} className="button-primary button-accent !min-h-10 !px-4 !text-xs disabled:opacity-50">
+                    {settingPin ? "Saving PIN…" : "Save PIN"}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
+              <table className="w-full text-xs">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    <th className="px-4 py-3 text-left font-extrabold text-slate-700">Full Name</th>
+                    <th className="px-4 py-3 text-left font-extrabold text-slate-700">Email</th>
+                    <th className="px-4 py-3 text-left font-extrabold text-slate-700">Role</th>
+                    <th className="px-4 py-3 text-left font-extrabold text-slate-700">PIN Authorization</th>
+                    <th className="px-4 py-3 text-right font-extrabold text-slate-700">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {staffAccounts.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-8 text-center text-slate-400 font-medium">
+                        {loadingStaff ? "Loading staff members..." : "No staff accounts found."}
+                      </td>
+                    </tr>
+                  ) : (
+                    staffAccounts.map((account) => (
+                      <tr key={account.id} className="hover:bg-slate-50 transition">
+                        <td className="px-4 py-3 font-bold text-slate-900">{account.full_name}</td>
+                        <td className="px-4 py-3 font-mono text-slate-600">{account.email}</td>
+                        <td className="px-4 py-3">
+                          <StatusBadge status={account.role} />
+                        </td>
+                        <td className="px-4 py-3">
+                          {account.has_pin ? (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200">6-Digit PIN Set</span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-rose-50 text-rose-700 border border-rose-200">No PIN Configured</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            onClick={() => {
+                              setPinModalUser(account);
+                              setPinInputValue("");
+                            }}
+                            className="px-3 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 font-bold rounded-md text-[11px] inline-flex items-center gap-1.5 transition"
+                          >
+                            <KeyRound className="w-3.5 h-3.5" />
+                            <span>{account.has_pin ? "Reset PIN" : "Assign 6-Digit PIN"}</span>
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </section>
       )}
 
@@ -898,6 +1034,7 @@ function AdminDashboardContent() {
                           <th className="px-4 py-3 text-left text-slate-700 font-extrabold">Ticket</th>
                           <th className="px-4 py-3 text-left text-slate-700 font-extrabold">Amount</th>
                           <th className="px-4 py-3 text-left text-slate-700 font-extrabold">Receipt</th>
+                          <th className="px-4 py-3 text-left text-slate-700 font-extrabold">Issued By</th>
                           <th className="px-4 py-3 text-left text-slate-700 font-extrabold">Collected At</th>
                         </>
                       )}
@@ -960,6 +1097,7 @@ function AdminDashboardContent() {
                             <td className="px-4 py-3 font-mono text-yellow-800 bg-yellow-50 px-2 py-0.5 rounded border border-yellow-200 font-bold">{row.ticket_code || "—"}</td>
                             <td className="px-4 py-3 text-pink-600 font-black">₹{row.amount}</td>
                             <td className="px-4 py-3 font-mono text-slate-600 font-bold">{row.receipt_number}</td>
+                            <td className="px-4 py-3 text-blue-700 font-extrabold">{row.collector_name || "—"}</td>
                             <td className="px-4 py-3 text-slate-400 text-[10px] font-medium">{formatReportDate(row.created_at)}</td>
                           </>
                         )}

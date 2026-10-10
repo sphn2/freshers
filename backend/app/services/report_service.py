@@ -142,11 +142,12 @@ class ReportService:
             return db.execute_query(
                 """SELECT oc.id, oc.amount, oc.payment_method, oc.receipt_number, oc.notes, oc.created_at,
                           r.full_name, r.roll_number, r.department, r.email, e.title as event_title,
-                          t.ticket_code
+                          t.ticket_code, p.full_name as collector_name, p.email as collector_email
                    FROM offline_collections oc
                    JOIN registrations r ON oc.registration_id = r.id
                    JOIN events e ON oc.event_id = e.id
                    LEFT JOIN tickets t ON r.id = t.registration_id
+                   LEFT JOIN profiles p ON oc.collector_id = p.id
                    WHERE oc.event_id = %s
                    ORDER BY oc.created_at DESC LIMIT %s""",
                 (event_id, limit)
@@ -155,11 +156,12 @@ class ReportService:
             return db.execute_query(
                 """SELECT oc.id, oc.amount, oc.payment_method, oc.receipt_number, oc.notes, oc.created_at,
                           r.full_name, r.roll_number, r.department, r.email, e.title as event_title,
-                          t.ticket_code
+                          t.ticket_code, p.full_name as collector_name, p.email as collector_email
                    FROM offline_collections oc
                    JOIN registrations r ON oc.registration_id = r.id
                    JOIN events e ON oc.event_id = e.id
                    LEFT JOIN tickets t ON r.id = t.registration_id
+                   LEFT JOIN profiles p ON oc.collector_id = p.id
                    ORDER BY oc.created_at DESC LIMIT %s""",
                 (limit,)
             )

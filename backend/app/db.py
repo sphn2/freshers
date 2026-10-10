@@ -68,6 +68,7 @@ class DatabaseManager:
                 roll_number TEXT,
                 department TEXT,
                 college_id TEXT,
+                pin_hash TEXT,
                 created_at TEXT,
                 updated_at TEXT
             );
@@ -260,6 +261,9 @@ class DatabaseManager:
             );
         """)
         additive_columns = {
+            "profiles": {
+                "pin_hash": "TEXT",
+            },
             "events": {
                 "first_year_ticket_price": "REAL NOT NULL DEFAULT 500.0",
                 "second_year_ticket_price": "REAL NOT NULL DEFAULT 600.0",

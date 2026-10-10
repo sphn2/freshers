@@ -12,6 +12,8 @@ from app.services.offline_service import offline_service
 from app.services.ticket_service import ticket_service
 
 
+from werkzeug.security import generate_password_hash
+
 def test_offline_registration_uses_backend_amount_paid_field():
     with pytest.raises(ValidationError):
         OfflineRegistrationRequest(
@@ -22,10 +24,11 @@ def test_offline_registration_uses_backend_amount_paid_field():
             phone="9876543218",
             department="CSE",
             amount_collected=600,
+            pin="123456",
         )
 
 
-def make_request(event_id: str, amount: float) -> OfflineRegistrationRequest:
+def make_request(event_id: str, amount: float, pin: str = "123456") -> OfflineRegistrationRequest:
     unique_id = str(uuid.uuid4())[:8]
     return OfflineRegistrationRequest(
         event_id=event_id,
@@ -35,6 +38,7 @@ def make_request(event_id: str, amount: float) -> OfflineRegistrationRequest:
         phone="9876543218",
         department="CIVIL",
         amount_paid=amount,
+        pin=pin,
     )
 
 
@@ -63,6 +67,12 @@ def prepare_event(event_id: str) -> dict:
             None,
             event_id,
         ),
+    )
+    db.execute_write(
+        """INSERT INTO profiles (id, email, full_name, pin_hash)
+           VALUES (%s, %s, %s, %s)
+           ON CONFLICT (id) DO UPDATE SET pin_hash = EXCLUDED.pin_hash""",
+        ("test-collector", "test-collector@sphoorthy.ac.in", "Test Collector", generate_password_hash("123456")),
     )
     return original
 

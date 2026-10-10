@@ -36,11 +36,14 @@ class TicketService:
     def get_ticket_by_id(ticket_id: str):
         ticket = db.execute_one(
             """SELECT t.*, r.user_id, r.full_name as student_name, r.roll_number, r.email, r.department, r.college,
-                      e.title as event_title, e.venue, e.start_time, fe.status as food_status, fe.food_validated_at
+                      e.title as event_title, e.venue, e.start_time, fe.status as food_status, fe.food_validated_at,
+                      p.full_name as issued_by
                FROM tickets t
                JOIN registrations r ON t.registration_id = r.id
                JOIN events e ON t.event_id = e.id
                LEFT JOIN food_entitlements fe ON t.id = fe.ticket_id
+               LEFT JOIN offline_collections oc ON t.registration_id = oc.registration_id
+               LEFT JOIN profiles p ON oc.collector_id = p.id
                WHERE t.id = %s""",
             (ticket_id,)
         )

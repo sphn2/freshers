@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime, timezone
+from werkzeug.security import check_password_hash
 from app.db import db
 from app.schemas.offline import OfflineRegistrationRequest, OfflineRegistrationResponse
 from app.services.ticket_service import ticket_service
@@ -10,6 +11,12 @@ from app.services.pricing_service import ticket_price_for_roll
 class OfflineService:
     @staticmethod
     def register_offline_cash(req: OfflineRegistrationRequest, collector_user_id: str) -> OfflineRegistrationResponse:
+        collector = db.execute_one("SELECT full_name, pin_hash FROM profiles WHERE id = %s", (collector_user_id,))
+        if not collector or not collector.get("pin_hash"):
+            raise ValueError("Your account does not have a 6-digit PIN configured. Contact an Admin or Super Admin to assign your PIN.")
+        if not check_password_hash(collector["pin_hash"], req.pin.strip()):
+            raise ValueError("Invalid 6-digit authorization PIN.")
+
         reg_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
         receipt = req.receipt_number or f"CASH-{uuid.uuid4().hex[:6].upper()}"

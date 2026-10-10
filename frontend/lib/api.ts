@@ -204,6 +204,13 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  listStaffAccounts: () =>
+    apiFetch<{ staff_accounts: import("./types").StaffAccount[] }>("/admin/staff-accounts"),
+  setStaffPin: (userId: string, pin: string) =>
+    apiFetch<{ message: string }>(`/admin/staff-accounts/${encodeURIComponent(userId)}/pin`, {
+      method: "POST",
+      body: JSON.stringify({ pin }),
+    }),
 
   getRegistrationsReport: (eventId?: string) =>
     apiFetch<{ registrations: ReportRow[] }>(

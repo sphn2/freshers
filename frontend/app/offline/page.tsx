@@ -10,7 +10,7 @@ import { Banknote, CheckCircle2, AlertCircle, Loader2, ShieldCheck } from "lucid
 
 export default function OfflineCollectorPage() {
   return (
-    <ProtectedRoute allowedRoles={["OFFLINE_COLLECTOR", "ADMIN"]}>
+    <ProtectedRoute allowedRoles={["SUPER_ADMIN", "ADMIN", "EVENT_MANAGER", "OFFLINE_COLLECTOR"]}>
       <OfflineCollectorContent />
     </ProtectedRoute>
   );
@@ -29,6 +29,7 @@ function OfflineCollectorContent() {
   const [phone, setPhone] = useState("");
   const [department, setDepartment] = useState("CSE");
   const [receiptNumber, setReceiptNumber] = useState("");
+  const [pin, setPin] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<OfflineRegistrationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -89,6 +90,10 @@ function OfflineCollectorContent() {
       setError("Enter an eligible roll number with a configured event fee.");
       return;
     }
+    if (pin.length !== 6) {
+      setError("Please enter your 6-digit authorization PIN.");
+      return;
+    }
     setSubmitting(true);
 
     try {
@@ -100,6 +105,7 @@ function OfflineCollectorContent() {
         phone: phone.trim(),
         department,
         amount_paid: expectedAmount,
+        pin: pin.trim(),
         receipt_number: receiptNumber.trim() || undefined,
       };
 
@@ -112,6 +118,7 @@ function OfflineCollectorContent() {
       setEmail("");
       setPhone("");
       setReceiptNumber("");
+      setPin("");
       loadSummary();
     } catch (err: unknown) {
       setError(errorMessage(err, "Offline cash registration failed."));
@@ -289,7 +296,7 @@ function OfflineCollectorContent() {
             )}
           </div>
 
-          <div className="md:col-span-2">
+          <div>
             <label className="field-label">Physical receipt no. (optional)</label>
             <input
               type="text"
@@ -297,6 +304,22 @@ function OfflineCollectorContent() {
               value={receiptNumber}
               onChange={(e) => setReceiptNumber(e.target.value)}
               className="field-control font-mono"
+            />
+          </div>
+
+          <div>
+            <label className="field-label">Authorization PIN (6 digits) *</label>
+            <input
+              type="password"
+              required
+              minLength={6}
+              maxLength={6}
+              pattern="\d{6}"
+              inputMode="numeric"
+              placeholder="Enter 6-digit PIN"
+              value={pin}
+              onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              className="field-control font-mono tracking-widest text-center"
             />
           </div>
         </div>
