@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "RUdvay Events portal",
-    short_name: "RUdvay Events portal",
+    name: "Rudvay Events Portal",
+    short_name: "Rudvay Events Portal",
     description: "Official staff login, gate scanner, food desk, and management app powered by Rudvay Tech.",
     start_url: "/auth/login",
     display: "standalone",

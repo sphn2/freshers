@@ -12,14 +12,14 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "RUdvay Events portal",
+  title: "Rudvay Events Portal",
   description:
     "The official campus event calendar, registration and entry platform for Sphoorthy Engineering College powered by Rudvay Tech.",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "RUdvay Events portal",
+    title: "Rudvay Events Portal",
   },
   icons: {
     icon: [
