@@ -18,14 +18,14 @@ class AuthAdminResponse:
 
 
 @pytest.mark.parametrize(
-    ("secret_key", "expects_bearer"),
+    "secret_key",
     [
-        ("eyJ.legacy-service-role-test-key", True),
-        ("sb_secret_test-key", False),
+        "eyJ.legacy-service-role-test-key",
+        "sb_secret_test-key",
     ],
 )
 def test_admin_creates_auth_user_and_assigns_staff_role(
-    monkeypatch, secret_key, expects_bearer
+    monkeypatch, secret_key
 ):
     app = create_app()
     user_id = str(uuid.uuid4())
@@ -59,10 +59,7 @@ def test_admin_creates_auth_user_and_assigns_staff_role(
     assert len(requests) == 1
     assert requests[0][0] == "https://example.supabase.co/auth/v1/admin/users"
     assert requests[0][1]["apikey"] == secret_key
-    if expects_bearer:
-        assert requests[0][1]["Authorization"] == f"Bearer {secret_key}"
-    else:
-        assert "Authorization" not in requests[0][1]
+    assert requests[0][1]["Authorization"] == f"Bearer {secret_key}"
     assert requests[0][2]["email_confirm"] is True
     profile = db.execute_one("SELECT email, full_name FROM profiles WHERE id = %s", (user_id,))
     assert profile == {"email": "gate.operator@example.com", "full_name": "Gate Operator"}
