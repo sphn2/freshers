@@ -211,6 +211,14 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ pin }),
     }),
+  updateStaffPrivilege: (userId: string, role: string, enabled: boolean) =>
+    apiFetch<{ message: string; roles: string[] }>(
+      `/admin/staff-accounts/${encodeURIComponent(userId)}/roles`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ role, enabled }),
+      },
+    ),
 
   getRegistrationsReport: (eventId?: string) =>
     apiFetch<{ registrations: ReportRow[] }>(

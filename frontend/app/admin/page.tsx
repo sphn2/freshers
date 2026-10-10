@@ -33,6 +33,7 @@ type Tab = "overview" | "registrations" | "payments" | "entries" | "offline" | "
 
 function AdminDashboardContent() {
   const { role } = useAuth();
+  const isSuperAdmin = role === "SUPER_ADMIN";
   const isAdmin = role === "SUPER_ADMIN" || role === "ADMIN";
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("overview");
@@ -75,6 +76,35 @@ function AdminDashboardContent() {
   const [pinModalUser, setPinModalUser] = useState<StaffAccount | null>(null);
   const [pinInputValue, setPinInputValue] = useState("");
   const [settingPin, setSettingPin] = useState(false);
+  const [togglingRoleId, setTogglingRoleId] = useState<string | null>(null);
+
+  const handleTogglePrivilege = async (account: StaffAccount, roleName: string, currentlyEnabled: boolean) => {
+    if (!isSuperAdmin) return;
+    const toggleKey = `${account.id}-${roleName}`;
+    setTogglingRoleId(toggleKey);
+    const newEnabled = !currentlyEnabled;
+
+    setStaffAccounts((prev) =>
+      prev.map((acc) => {
+        if (acc.id !== account.id) return acc;
+        const existingRoles = acc.roles || [acc.role];
+        const updatedRoles = newEnabled
+          ? Array.from(new Set([...existingRoles, roleName]))
+          : existingRoles.filter((r) => r !== roleName);
+        return { ...acc, roles: updatedRoles };
+      })
+    );
+
+    try {
+      const res = await api.updateStaffPrivilege(account.id, roleName, newEnabled);
+      setStatusMsg(`✅ ${res.message}`);
+    } catch (err: unknown) {
+      setStatusMsg(`❌ ${errorMessage(err, "Failed updating privilege toggle.")}`);
+      void loadStaffAccounts();
+    } finally {
+      setTogglingRoleId(null);
+    }
+  };
 
   useEffect(() => {
     setSecureContext(
@@ -767,110 +797,131 @@ function AdminDashboardContent() {
       )}
 
       {activeTab === "accounts" && isAdmin && (
-        <section className="mx-auto max-w-3xl space-y-5">
-          <div>
-            <p className="eyebrow">Access control</p>
-            <h2 className="editorial-title mt-2 text-3xl">Create staff account</h2>
-            <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-600">
-              Creates the Supabase Auth user and assigns the matching platform role. Share the initial password privately and ask the staff member to change it after signing in.
-            </p>
-          </div>
-          <form onSubmit={handleCreateStaffAccount} className="admin-form panel space-y-5 p-5 md:p-7">
-            {!secureContext && (
-              <div role="alert" className="border border-amber-300 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
-                Staff account creation is disabled over insecure LAN HTTP because the initial password would be exposed in transit. Open this admin page over trusted HTTPS.
-              </div>
-            )}
-            <div className="grid gap-4 md:grid-cols-2">
+        <section className="mx-auto max-w-5xl space-y-6">
+          {/* Header Banner depending on Role */}
+          {isSuperAdmin ? (
+            <div className="space-y-4">
               <div>
-                <label htmlFor="staff-full-name">Full name</label>
-                <input
-                  id="staff-full-name"
-                  required
-                  minLength={2}
-                  maxLength={255}
-                  autoComplete="name"
-                  className="field-control"
-                  value={staffForm.full_name}
-                  onChange={(event) => setStaffForm((form) => ({ ...form, full_name: event.target.value }))}
-                />
+                <p className="eyebrow !text-[#e5c86f]">Super Admin Access Control</p>
+                <h2 className="editorial-title mt-1 text-3xl">Create Staff Account & Manage Privileges</h2>
+                <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-600">
+                  Create platform accounts and toggle specific functional privileges (Cash Desk, Gate Desk, Food Counter, Event Management) for staff members.
+                </p>
               </div>
-              <div>
-                <label htmlFor="staff-email">Email</label>
-                <input
-                  id="staff-email"
-                  type="email"
-                  required
-                  maxLength={254}
-                  autoComplete="email"
-                  className="field-control"
-                  value={staffForm.email}
-                  onChange={(event) => setStaffForm((form) => ({ ...form, email: event.target.value }))}
-                />
-              </div>
-              <div>
-                <label htmlFor="staff-role">Role</label>
-                <select
-                  id="staff-role"
-                  className="field-control"
-                  value={staffForm.role}
-                  onChange={(event) => setStaffForm((form) => ({
-                    ...form,
-                    role: event.target.value as typeof form.role,
-                    event_id: "",
-                  }))}
-                >
-                  <option value="GATE_STAFF">Gate staff</option>
-                  <option value="FOOD_STAFF">Food staff</option>
-                  <option value="EVENT_MANAGER">Event organizer</option>
-                </select>
-              </div>
-              {staffForm.role === "EVENT_MANAGER" && (
-                <div>
-                  <label htmlFor="staff-event">Assigned event</label>
-                  <select
-                    id="staff-event"
-                    required
-                    className="field-control"
-                    value={staffForm.event_id}
-                    onChange={(event) => setStaffForm((form) => ({ ...form, event_id: event.target.value }))}
-                  >
-                    <option value="">Choose an event</option>
-                    {events.map((event) => <option key={event.id} value={event.id}>{event.title}</option>)}
-                  </select>
-                </div>
-              )}
-              <div className={staffForm.role === "EVENT_MANAGER" ? "md:col-span-2" : ""}>
-                <label htmlFor="staff-password">Initial password</label>
-                <input
-                  id="staff-password"
-                  type="password"
-                  required
-                  minLength={12}
-                  maxLength={128}
-                  autoComplete="new-password"
-                  className="field-control"
-                  value={staffForm.password}
-                  onChange={(event) => setStaffForm((form) => ({ ...form, password: event.target.value }))}
-                />
-                <p className="mt-1.5 text-[10px] text-slate-500">Use a unique password of at least 12 characters. Never share it in a group chat.</p>
-              </div>
-            </div>
-            <button type="submit" disabled={creatingStaff || !secureContext} className="button-primary button-accent w-full disabled:cursor-not-allowed disabled:opacity-60">
-              {creatingStaff ? <RefreshCw className="h-4 w-4 animate-spin" /> : <UserRoundPlus className="h-4 w-4" />}
-              {creatingStaff ? "Creating account…" : "Create Supabase account"}
-            </button>
-          </form>
 
-          {/* STAFF ACCOUNTS & PIN MANAGEMENT LIST */}
-          <div className="space-y-4 pt-6 border-t border-slate-200">
+              <form onSubmit={handleCreateStaffAccount} className="admin-form panel space-y-5 p-5 md:p-7">
+                {!secureContext && (
+                  <div role="alert" className="border border-amber-300 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
+                    Staff account creation is disabled over insecure LAN HTTP because the initial password would be exposed in transit. Open this admin page over trusted HTTPS.
+                  </div>
+                )}
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label htmlFor="staff-full-name">Full name</label>
+                    <input
+                      id="staff-full-name"
+                      required
+                      minLength={2}
+                      maxLength={255}
+                      autoComplete="name"
+                      className="field-control"
+                      value={staffForm.full_name}
+                      onChange={(event) => setStaffForm((form) => ({ ...form, full_name: event.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="staff-email">Email</label>
+                    <input
+                      id="staff-email"
+                      type="email"
+                      required
+                      maxLength={254}
+                      autoComplete="email"
+                      className="field-control"
+                      value={staffForm.email}
+                      onChange={(event) => setStaffForm((form) => ({ ...form, email: event.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="staff-role">Initial Role / Desk</label>
+                    <select
+                      id="staff-role"
+                      className="field-control"
+                      value={staffForm.role}
+                      onChange={(event) => setStaffForm((form) => ({
+                        ...form,
+                        role: event.target.value as typeof form.role,
+                        event_id: "",
+                      }))}
+                    >
+                      <option value="GATE_STAFF">Gate Entry Staff</option>
+                      <option value="FOOD_STAFF">Food Counter Staff</option>
+                      <option value="EVENT_MANAGER">Event Organizer</option>
+                    </select>
+                  </div>
+                  {staffForm.role === "EVENT_MANAGER" && (
+                    <div>
+                      <label htmlFor="staff-event">Assigned event</label>
+                      <select
+                        id="staff-event"
+                        required
+                        className="field-control"
+                        value={staffForm.event_id}
+                        onChange={(event) => setStaffForm((form) => ({ ...form, event_id: event.target.value }))}
+                      >
+                        <option value="">Choose an event</option>
+                        {events.map((event) => <option key={event.id} value={event.id}>{event.title}</option>)}
+                      </select>
+                    </div>
+                  )}
+                  <div className={staffForm.role === "EVENT_MANAGER" ? "md:col-span-2" : ""}>
+                    <label htmlFor="staff-password">Initial password</label>
+                    <input
+                      id="staff-password"
+                      type="password"
+                      required
+                      minLength={12}
+                      maxLength={128}
+                      autoComplete="new-password"
+                      className="field-control"
+                      value={staffForm.password}
+                      onChange={(event) => setStaffForm((form) => ({ ...form, password: event.target.value }))}
+                    />
+                    <p className="mt-1.5 text-[10px] text-slate-500">Use a unique password of at least 12 characters. Never share it in a group chat.</p>
+                  </div>
+                </div>
+                <button type="submit" disabled={creatingStaff || !secureContext} className="button-primary button-accent w-full disabled:cursor-not-allowed disabled:opacity-60">
+                  {creatingStaff ? <RefreshCw className="h-4 w-4 animate-spin" /> : <UserRoundPlus className="h-4 w-4" />}
+                  {creatingStaff ? "Creating account…" : "Create Supabase Staff Account"}
+                </button>
+              </form>
+            </div>
+          ) : (
+            <div className="p-5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 space-y-1 shadow-sm">
+              <div className="flex items-center gap-2 font-extrabold text-sm text-amber-950">
+                <ShieldCheck className="w-5 h-5 text-amber-700 flex-shrink-0" />
+                <span>College Admin View (Read-Only Privilege Directory)</span>
+              </div>
+              <p className="text-xs text-amber-800 leading-relaxed">
+                As a College Admin, you can review all registered staff members and inspect their active access privileges below (what operations they can perform). Creating new staff accounts and modifying privilege toggles are restricted to <strong>Super Admin</strong>.
+              </p>
+            </div>
+          )}
+
+          {/* STAFF ACCOUNTS & PRIVILEGE TOGGLES DIRECTORY */}
+          <div className="space-y-4 pt-4 border-t border-slate-200">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <h3 className="text-lg font-bold text-slate-900">Staff Members & Authorization PINs</h3>
-                <p className="text-xs text-slate-500">Super Admin and Admins can set or reset 6-digit cash desk authorization PINs for Event Managers and Staff.</p>
+                <h3 className="text-lg font-extrabold text-slate-900">Staff Privileges & Authorization PINs</h3>
+                <p className="text-xs text-slate-500">
+                  {isSuperAdmin
+                    ? "Use toggle switches to grant or revoke specific operational permissions per staff member."
+                    : "Inspect authorized staff capabilities and 6-digit cash desk PIN status."}
+                </p>
               </div>
               <button onClick={() => void loadStaffAccounts()} className="px-3 py-1.5 bg-slate-100 text-slate-700 text-xs font-bold rounded-lg flex items-center gap-1.5 transition hover:bg-slate-200">
                 <RefreshCw className={`w-3.5 h-3.5 ${loadingStaff ? "animate-spin" : ""}`} />
+                <span>Refresh List</span>
               </button>
             </div>
 
@@ -904,55 +955,113 @@ function AdminDashboardContent() {
             )}
 
             <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
-              <table className="w-full text-xs">
-                <thead className="bg-slate-50 border-b border-slate-200">
-                  <tr>
-                    <th className="px-4 py-3 text-left font-extrabold text-slate-700">Full Name</th>
-                    <th className="px-4 py-3 text-left font-extrabold text-slate-700">Email</th>
-                    <th className="px-4 py-3 text-left font-extrabold text-slate-700">Role</th>
-                    <th className="px-4 py-3 text-left font-extrabold text-slate-700">PIN Authorization</th>
-                    <th className="px-4 py-3 text-right font-extrabold text-slate-700">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {staffAccounts.length === 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-50 border-b border-slate-200">
                     <tr>
-                      <td colSpan={5} className="px-4 py-8 text-center text-slate-400 font-medium">
-                        {loadingStaff ? "Loading staff members..." : "No staff accounts found."}
-                      </td>
+                      <th className="px-4 py-3 text-left font-extrabold text-slate-700">Staff Member</th>
+                      <th className="px-4 py-3 text-left font-extrabold text-slate-700">Primary Role</th>
+                      <th className="px-3 py-3 text-center font-extrabold text-slate-700">Cash Desk 💵</th>
+                      <th className="px-3 py-3 text-center font-extrabold text-slate-700">Gate Entry 🚪</th>
+                      <th className="px-3 py-3 text-center font-extrabold text-slate-700">Food Counter 🍱</th>
+                      <th className="px-3 py-3 text-center font-extrabold text-slate-700">Event Manager 📅</th>
+                      <th className="px-4 py-3 text-left font-extrabold text-slate-700">PIN Status</th>
+                      <th className="px-4 py-3 text-right font-extrabold text-slate-700">Actions</th>
                     </tr>
-                  ) : (
-                    staffAccounts.map((account) => (
-                      <tr key={account.id} className="hover:bg-slate-50 transition">
-                        <td className="px-4 py-3 font-bold text-slate-900">{account.full_name}</td>
-                        <td className="px-4 py-3 font-mono text-slate-600">{account.email}</td>
-                        <td className="px-4 py-3">
-                          <StatusBadge status={account.role} />
-                        </td>
-                        <td className="px-4 py-3">
-                          {account.has_pin ? (
-                            <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200">6-Digit PIN Set</span>
-                          ) : (
-                            <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-rose-50 text-rose-700 border border-rose-200">No PIN Configured</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <button
-                            onClick={() => {
-                              setPinModalUser(account);
-                              setPinInputValue("");
-                            }}
-                            className="px-3 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 font-bold rounded-md text-[11px] inline-flex items-center gap-1.5 transition"
-                          >
-                            <KeyRound className="w-3.5 h-3.5" />
-                            <span>{account.has_pin ? "Reset PIN" : "Assign 6-Digit PIN"}</span>
-                          </button>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {staffAccounts.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="px-4 py-8 text-center text-slate-400 font-medium">
+                          {loadingStaff ? "Loading staff members..." : "No staff accounts found."}
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+                    ) : (
+                      staffAccounts.map((account) => {
+                        const accountRoles = account.roles || [account.role];
+
+                        const renderPrivilegeToggle = (roleName: string, label: string) => {
+                          const hasRole = accountRoles.includes(roleName) || accountRoles.includes("SUPER_ADMIN");
+                          const isPending = togglingRoleId === `${account.id}-${roleName}`;
+
+                          if (!isSuperAdmin) {
+                            return (
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold inline-flex items-center gap-1 border ${
+                                hasRole
+                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                  : "bg-slate-50 text-slate-400 border-slate-200"
+                              }`}>
+                                {hasRole ? "✓ Allowed" : "✕ No Access"}
+                              </span>
+                            );
+                          }
+
+                          return (
+                            <button
+                              type="button"
+                              disabled={isPending || accountRoles.includes("SUPER_ADMIN")}
+                              onClick={() => void handleTogglePrivilege(account, roleName, hasRole)}
+                              title={accountRoles.includes("SUPER_ADMIN") ? "Super Admin has full access to all capabilities" : `${hasRole ? 'Revoke' : 'Grant'} ${label} for ${account.full_name}`}
+                              className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 ${
+                                hasRole ? "bg-emerald-600" : "bg-slate-300"
+                              }`}
+                            >
+                              <span
+                                className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                  hasRole ? "translate-x-4" : "translate-x-0"
+                                }`}
+                              />
+                            </button>
+                          );
+                        };
+
+                        return (
+                          <tr key={account.id} className="hover:bg-slate-50 transition">
+                            <td className="px-4 py-3">
+                              <div className="font-bold text-slate-900">{account.full_name}</div>
+                              <div className="font-mono text-[10px] text-slate-500">{account.email}</div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <StatusBadge status={account.role} />
+                            </td>
+                            <td className="px-3 py-3 text-center">
+                              {renderPrivilegeToggle("OFFLINE_COLLECTOR", "Cash Desk")}
+                            </td>
+                            <td className="px-3 py-3 text-center">
+                              {renderPrivilegeToggle("GATE_STAFF", "Gate Entry")}
+                            </td>
+                            <td className="px-3 py-3 text-center">
+                              {renderPrivilegeToggle("FOOD_STAFF", "Food Counter")}
+                            </td>
+                            <td className="px-3 py-3 text-center">
+                              {renderPrivilegeToggle("EVENT_MANAGER", "Event Manager")}
+                            </td>
+                            <td className="px-4 py-3">
+                              {account.has_pin ? (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200">PIN Set</span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-rose-50 text-rose-700 border border-rose-200">No PIN</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <button
+                                onClick={() => {
+                                  setPinModalUser(account);
+                                  setPinInputValue("");
+                                }}
+                                className="px-2.5 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 font-bold rounded-md text-[10px] inline-flex items-center gap-1 transition"
+                              >
+                                <KeyRound className="w-3 h-3" />
+                                <span>{account.has_pin ? "Reset PIN" : "Set PIN"}</span>
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </section>

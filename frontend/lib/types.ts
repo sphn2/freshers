@@ -133,6 +133,7 @@ export interface StaffAccount {
   full_name: string;
   email: string;
   role: string;
+  roles?: string[];
   has_pin: boolean;
   created_at: string;
 }

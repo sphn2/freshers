@@ -88,38 +88,118 @@ from datetime import datetime, timezone
 from werkzeug.security import generate_password_hash
 from app.services.audit_service import audit_service
 
-@admin_bp.route("/staff-accounts", methods=["GET"])
+@admin_bp.route("/staff-accounts", methods=["GET", "POST"])
 @require_roles("ADMIN", "SUPER_ADMIN")
-def list_staff_accounts():
-    try:
-        rows = db.execute_query(
-            """SELECT p.id, p.full_name, p.email, r.name as role, (p.pin_hash IS NOT NULL AND p.pin_hash != '') as has_pin, p.created_at
-               FROM profiles p
-               JOIN user_roles ur ON p.id = ur.user_id
-               JOIN roles r ON ur.role_id = r.id
-               WHERE r.name IN ('SUPER_ADMIN', 'ADMIN', 'EVENT_MANAGER', 'OFFLINE_COLLECTOR', 'GATE_STAFF', 'FOOD_STAFF')
-               ORDER BY p.created_at DESC"""
-        )
-        return jsonify({"staff_accounts": rows}), 200
-    except Exception:
-        return internal_error("fetching staff accounts")
+def handle_staff_accounts():
+    if request.method == "GET":
+        try:
+            profiles = db.execute_query(
+                """SELECT p.id, p.full_name, p.email, (p.pin_hash IS NOT NULL AND p.pin_hash != '') as has_pin, p.created_at
+                   FROM profiles p
+                   ORDER BY p.created_at DESC"""
+            )
+            user_roles_rows = db.execute_query(
+                """SELECT ur.user_id, r.name as role
+                   FROM user_roles ur
+                   JOIN roles r ON ur.role_id = r.id"""
+            )
+            user_roles_map = {}
+            for r in user_roles_rows:
+                user_roles_map.setdefault(r["user_id"], []).append(r["role"])
 
-@admin_bp.route("/staff-accounts", methods=["POST"])
-@require_roles("ADMIN", "SUPER_ADMIN")
-def create_staff_account():
+            staff_list = []
+            valid_roles = ('SUPER_ADMIN', 'ADMIN', 'EVENT_MANAGER', 'OFFLINE_COLLECTOR', 'GATE_STAFF', 'FOOD_STAFF')
+            for p in profiles:
+                roles = user_roles_map.get(p["id"], [])
+                if any(r in valid_roles for r in roles):
+                    primary_role = "STUDENT"
+                    for r in valid_roles:
+                        if r in roles:
+                            primary_role = r
+                            break
+                    staff_list.append({
+                        "id": p["id"],
+                        "full_name": p["full_name"],
+                        "email": p["email"],
+                        "role": primary_role,
+                        "roles": roles,
+                        "has_pin": bool(p["has_pin"]),
+                        "created_at": p["created_at"],
+                    })
+            return jsonify({"staff_accounts": staff_list}), 200
+        except Exception:
+            return internal_error("fetching staff accounts")
+
+    elif request.method == "POST":
+        try:
+            data = StaffAccountCreate(**(request.get_json() or {}))
+            account = staff_account_service.create_account(
+                data,
+                created_by=g.current_user["id"],
+            )
+            return jsonify({"message": "Staff account created successfully.", "account": account}), 201
+        except ValidationError as e:
+            return jsonify({"error": format_validation_error(e), "details": e.errors()}), 422
+        except StaffAccountError as e:
+            return jsonify({"error": str(e)}), e.status_code
+        except Exception:
+            return internal_error("creating a staff account")
+
+@admin_bp.route("/staff-accounts/<user_id>/roles", methods=["PATCH"])
+@require_roles("SUPER_ADMIN")
+def update_staff_roles(user_id):
     try:
-        data = StaffAccountCreate(**(request.get_json() or {}))
-        account = staff_account_service.create_account(
-            data,
-            created_by=g.current_user["id"],
+        body = request.get_json() or {}
+        target_role = str(body.get("role", "")).strip().upper()
+        enabled = bool(body.get("enabled", False))
+
+        allowed_roles = {'OFFLINE_COLLECTOR', 'GATE_STAFF', 'FOOD_STAFF', 'EVENT_MANAGER', 'ADMIN'}
+        if target_role not in allowed_roles:
+            return jsonify({"error": f"Invalid role toggle. Allowed roles: {', '.join(sorted(allowed_roles))}"}), 400
+
+        target = db.execute_one("SELECT id, full_name, email FROM profiles WHERE id = %s", (user_id,))
+        if not target:
+            return jsonify({"error": "Staff profile not found."}), 404
+
+        role_obj = db.execute_one("SELECT id FROM roles WHERE name = %s", (target_role,))
+        if not role_obj:
+            return jsonify({"error": f"Role {target_role} does not exist."}), 404
+
+        now = datetime.now(timezone.utc).isoformat()
+        if enabled:
+            db.execute_write(
+                """INSERT INTO user_roles (id, user_id, role_id, created_at)
+                   VALUES (%s, %s, %s, %s)
+                   ON CONFLICT(user_id, role_id) DO NOTHING""",
+                (str(uuid.uuid4()), user_id, role_obj["id"], now)
+            )
+        else:
+            db.execute_write(
+                "DELETE FROM user_roles WHERE user_id = %s AND role_id = %s",
+                (user_id, role_obj["id"])
+            )
+
+        updated_roles_rows = db.execute_query(
+            """SELECT r.name FROM user_roles ur
+               JOIN roles r ON ur.role_id = r.id
+               WHERE ur.user_id = %s""",
+            (user_id,)
         )
-        return jsonify({"message": "Staff account created successfully.", "account": account}), 201
-    except ValidationError as e:
-        return jsonify({"error": format_validation_error(e), "details": e.errors()}), 422
-    except StaffAccountError as e:
-        return jsonify({"error": str(e)}), e.status_code
+        updated_roles = [r["name"] for r in updated_roles_rows]
+
+        audit_service.log(
+            "UPDATE_STAFF_PRIVILEGES",
+            "profile",
+            user_id,
+            g.current_user["id"],
+            {"staff_name": target["full_name"], "toggled_role": target_role, "enabled": enabled, "roles": updated_roles},
+        )
+        return jsonify({
+            "message": f"Privilege '{target_role.replace('_', ' ')}' {'granted to' if enabled else 'revoked from'} {target['full_name']}.",
+            "roles": updated_roles
+        }), 200
     except Exception:
-        return internal_error("creating a staff account")
+        return internal_error("updating staff privileges")
 
 @admin_bp.route("/staff-accounts/<user_id>/pin", methods=["POST", "PATCH"])
 @require_roles("ADMIN", "SUPER_ADMIN")
