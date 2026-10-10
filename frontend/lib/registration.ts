@@ -2,8 +2,12 @@ import type { Event } from "@/lib/types";
 
 export interface RegistrationAvailability {
   open: boolean;
+  isUpcoming?: boolean;
   label: string;
   explanation: string;
+  exactOpenString?: string;
+  openDateFormatted?: string;
+  openTimeFormatted?: string;
 }
 
 export function registrationAvailability(event: Event, now = new Date()): RegistrationAvailability {
@@ -25,10 +29,28 @@ export function registrationAvailability(event: Event, now = new Date()): Regist
     const start = Date.parse(event.registration_start);
     const end = Date.parse(event.registration_end);
     if (Number.isFinite(start) && now.getTime() < start) {
+      const startDate = new Date(start);
+      const openDateFormatted = startDate.toLocaleDateString(undefined, {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+      const openTimeFormatted = startDate.toLocaleTimeString(undefined, {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      });
+      const exactOpenString = `${openDateFormatted} at ${openTimeFormatted}`;
+
       return {
         open: false,
-        label: "Opens soon",
-        explanation: `Registration opens ${new Date(start).toLocaleString()}.`,
+        isUpcoming: true,
+        label: "Registration Opens Soon",
+        explanation: `Registration for this event will officially open on ${exactOpenString}.`,
+        exactOpenString,
+        openDateFormatted,
+        openTimeFormatted,
       };
     }
     if (Number.isFinite(end) && now.getTime() > end) {

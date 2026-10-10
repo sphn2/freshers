@@ -6,7 +6,7 @@ import { api } from "@/lib/api";
 import { errorMessage } from "@/lib/types";
 import type { Event } from "@/lib/types";
 import { registrationAvailability } from "@/lib/registration";
-import { ArrowLeft, ArrowRight, CalendarDays, Check, CircleAlert, MapPin, ShieldCheck, Ticket, UserRoundCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight, CalendarDays, Check, CircleAlert, Clock, MapPin, ShieldCheck, Ticket, UserRoundCheck } from "lucide-react";
 import Link from "next/link";
 import RulesModal from "@/components/RulesModal";
 
@@ -176,10 +176,37 @@ export default function EventRegistrationPage() {
           </div>
 
           {!availability.open ? (
-            <div className="mt-6 border border-[#ded7c9] bg-[#f2eee3] p-5">
-              <p className="text-sm font-bold text-slate-900">{availability.label}</p>
-              <p className="mt-1 text-xs leading-5 text-slate-600">{availability.explanation}</p>
-              <Link href="/" className="button-primary mt-5 w-fit !min-h-10 !px-4 !text-[11px]">Explore other events <ArrowRight className="h-3.5 w-3.5" /></Link>
+            <div className="mt-6 rounded-xl border border-amber-300 bg-amber-50/90 p-6 space-y-4 shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-500 text-white shadow-sm">
+                  <Clock className="h-5 w-5" />
+                </div>
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-amber-800">Registration Schedule</span>
+                  <h3 className="text-xl font-bold text-amber-950">{availability.label}</h3>
+                </div>
+              </div>
+
+              {availability.isUpcoming && availability.exactOpenString ? (
+                <div className="rounded-lg border border-amber-300/80 bg-white p-4 space-y-2 shadow-inner">
+                  <p className="text-xs font-bold uppercase tracking-wider text-amber-800">Exact Opening Date & Time:</p>
+                  <p className="font-serif text-2xl font-bold text-amber-950">{availability.exactOpenString}</p>
+                  <p className="text-xs leading-relaxed text-slate-700 pt-1">
+                    {availability.explanation} Keep your student roll number and details ready for fast registration.
+                  </p>
+                </div>
+              ) : (
+                <p className="text-xs leading-relaxed text-amber-900">{availability.explanation}</p>
+              )}
+
+              <div className="pt-2 flex flex-wrap items-center justify-between gap-3 border-t border-amber-200/80 text-xs">
+                <span className="font-semibold text-amber-900">
+                  Opening Window: {new Date(event.registration_start).toLocaleString([], { dateStyle: "full", timeStyle: "short" })}
+                </span>
+                <Link href="/" className="button-primary !min-h-10 !px-4 !text-[11px] button-accent">
+                  Back to Campus Calendar <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </div>
             </div>
           ) : (
             <form onSubmit={handleFormSubmit} className="mt-6 space-y-4">

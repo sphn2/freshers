@@ -6,7 +6,7 @@ import { api } from "@/lib/api";
 import { errorMessage } from "@/lib/types";
 import type { Event } from "@/lib/types";
 import { registrationAvailability } from "@/lib/registration";
-import { ArrowUpRight, CalendarDays, MapPin, Sparkles, Ticket, Users, CheckCircle2 } from "lucide-react";
+import { ArrowUpRight, CalendarDays, Clock, MapPin, Sparkles, Ticket, Users, CheckCircle2 } from "lucide-react";
 
 export default function StudentHomePage() {
   const [events, setEvents] = useState<Event[]>([]);
@@ -177,8 +177,14 @@ export default function StudentHomePage() {
                       <span className="rounded bg-black/60 backdrop-blur px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-amber-300 border border-amber-400/30">
                         {event.event_type}
                       </span>
-                      <span className={`inline-flex items-center gap-1.5 rounded-full backdrop-blur px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider ${availability.open ? "bg-emerald-950/80 text-emerald-300 border border-emerald-500/40" : "bg-slate-900/80 text-slate-300 border border-slate-700"}`}>
-                        <span className={`h-1.5 w-1.5 rounded-full ${availability.open ? "bg-emerald-400 animate-pulse" : "bg-slate-400"}`} />
+                      <span className={`inline-flex items-center gap-1.5 rounded-full backdrop-blur px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider ${
+                        availability.open
+                          ? "bg-emerald-950/80 text-emerald-300 border border-emerald-500/40"
+                          : availability.isUpcoming
+                          ? "bg-amber-950/90 text-amber-300 border border-amber-400/60"
+                          : "bg-slate-900/80 text-slate-300 border border-slate-700"
+                      }`}>
+                        <span className={`h-1.5 w-1.5 rounded-full ${availability.open ? "bg-emerald-400 animate-pulse" : availability.isUpcoming ? "bg-amber-400 animate-pulse" : "bg-slate-400"}`} />
                         {availability.label}
                       </span>
                     </div>
@@ -194,6 +200,15 @@ export default function StudentHomePage() {
                     <p className="line-clamp-2 text-xs leading-relaxed text-slate-600">
                       {event.description || "Official Annual Freshers Celebration & Cultural Fest for Engineering Students - UDBHAV '26."}
                     </p>
+
+                    {availability.isUpcoming && availability.exactOpenString && (
+                      <div className="rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-900 font-medium">
+                        <div className="flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-wider text-amber-800">
+                          <Clock className="h-3.5 w-3.5 text-amber-600" /> Registration Opens Soon
+                        </div>
+                        <p className="mt-1 font-bold text-amber-950 text-[11px]">{availability.exactOpenString}</p>
+                      </div>
+                    )}
 
                     <div className="grid gap-2 border-t border-slate-100 pt-3 text-xs font-semibold text-slate-700">
                       <p className="flex items-center gap-2">
@@ -219,9 +234,9 @@ export default function StudentHomePage() {
 
                       <Link
                         href={`/events/${event.slug}`}
-                        className={`button-primary !min-h-10 !px-4 !text-xs ${availability.open ? "button-accent" : "!border-slate-300 !bg-transparent !text-slate-700 hover:!bg-slate-100"}`}
+                        className={`button-primary !min-h-10 !px-4 !text-xs ${availability.open ? "button-accent" : availability.isUpcoming ? "!border-amber-400 !bg-amber-100 !text-amber-950 hover:!bg-amber-200" : "!border-slate-300 !bg-transparent !text-slate-700 hover:!bg-slate-100"}`}
                       >
-                        {availability.open ? "Register Now" : "Details"}
+                        {availability.open ? "Register Now" : availability.isUpcoming ? "Opens Soon" : "Details"}
                         <ArrowUpRight className="h-4 w-4" />
                       </Link>
                     </div>
