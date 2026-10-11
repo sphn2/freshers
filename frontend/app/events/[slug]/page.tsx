@@ -239,10 +239,15 @@ export default function EventRegistrationPage() {
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div><label htmlFor="full-name" className="field-label">Full name</label><input id="full-name" className="field-control" autoComplete="name" required value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="As on your student ID" /></div>
-                <div><label htmlFor="email" className="field-label">College email</label><input id="email" type="email" className="field-control" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@college.edu" /></div>
+                <div><label htmlFor="email" className="field-label">Your Mail</label><input id="email" type="email" className="field-control" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@gmail.com" /></div>
                 <div><label htmlFor="phone" className="field-label">Mobile number</label><input id="phone" type="tel" className="field-control" autoComplete="tel" required value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="10-digit mobile number" /></div>
                 <div><label htmlFor="department" className="field-label">Department</label><select id="department" className="field-control" value={department} onChange={(e) => setDepartment(e.target.value)}>
-                  <option value="CSE">Computer Science & Engineering</option><option value="AIML">Artificial Intelligence & ML</option><option value="DATA SCIENCE">Data Science</option><option value="ECE">Electronics & Communication</option><option value="EEE">Electrical & Electronics</option><option value="MECHANICAL">Mechanical Engineering</option><option value="CIVIL">Civil Engineering</option>
+                  <option value="CSE">CSE</option>
+                  <option value="ECE">ECE</option>
+                  <option value="CSE-CS">CSE-CS</option>
+                  <option value="CSE - AIML">CSE - AIML</option>
+                  <option value="CSE - DS">CSE - DS</option>
+                  <option value="CIVIL">CIVIL</option>
                 </select></div>
                 <div className="sm:col-span-2"><label htmlFor="college" className="field-label">Institution</label><input id="college" className="field-control !bg-slate-100" readOnly value={college} /></div>
               </div>
