@@ -39,6 +39,12 @@ export default function DigitalTicketPage() {
     loadTicket();
   }, [ticketId]);
 
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+    }
+  }, [loading]);
+
   const handleResendEmail = async () => {
     setMessage(null);
     setActionError(null);
@@ -91,12 +97,14 @@ export default function DigitalTicketPage() {
 
   if (loading) {
     return (
-      <div className="panel mx-auto max-w-md p-8 text-center text-slate-600 space-y-3">
-        <Loader2 className="mx-auto h-7 w-7 animate-spin text-amber-600" />
-        <p className="font-semibold text-slate-800">Loading digital ticket pass...</p>
-        <p className="text-xs text-slate-500">
-          This ticket has been sent to your email, also check in your spam folder.
-        </p>
+      <div className="min-h-[60vh] flex flex-col items-center justify-center">
+        <div className="panel mx-auto w-full max-w-md p-8 text-center text-slate-600 space-y-3">
+          <Loader2 className="mx-auto h-7 w-7 animate-spin text-amber-600" />
+          <p className="font-semibold text-slate-800">Loading digital ticket pass...</p>
+          <p className="text-xs text-slate-500">
+            This ticket has been sent to your email, also check in your spam folder.
+          </p>
+        </div>
       </div>
     );
   }

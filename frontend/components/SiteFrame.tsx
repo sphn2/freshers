@@ -37,6 +37,13 @@ function SiteFrame({ children }: { children: React.ReactNode }) {
     setCurrentYear(new Date().getFullYear());
   }, []);
 
+  // Ensure scroll is reset to top whenever navigating between pages
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+    }
+  }, [pathname]);
+
   // Strict role-isolated navigation links: GATE_STAFF sees ONLY Gate Desk, FOOD_STAFF sees ONLY Food Counter
   let links: { href: string; label: string; icon: React.ElementType }[] = [];
 

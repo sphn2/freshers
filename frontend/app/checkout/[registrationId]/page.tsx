@@ -104,6 +104,12 @@ export default function PaymentCheckoutPage() {
     initCheckout();
   }, [registrationId, router]);
 
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+    }
+  }, [loading]);
+
   const handleOpenRulesModal = () => {
     if (!order) {
       setError("Payment order is unavailable. Please refresh and try again.");
@@ -151,8 +157,12 @@ export default function PaymentCheckoutPage() {
               }, registrationToken);
 
               if (verifyRes.ticket_id) {
+                if (typeof window !== "undefined") {
+                  window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+                }
                 router.push(
                   `/tickets/${verifyRes.ticket_id}${registrationToken ? `#access_token=${encodeURIComponent(registrationToken)}` : ""}`,
+                  { scroll: true },
                 );
                 resolve();
               } else {
@@ -197,8 +207,8 @@ export default function PaymentCheckoutPage() {
 
   if (loading) {
     return (
-      <div className="p-8 text-center text-slate-400 font-medium flex items-center justify-center gap-2">
-        <Loader2 className="w-5 h-5 animate-spin text-[#d3a52b]" />
+      <div className="min-h-[60vh] flex flex-col items-center justify-center p-8 text-center text-slate-400 font-medium gap-3">
+        <Loader2 className="w-6 h-6 animate-spin text-[#d3a52b]" />
         <span>Initializing Razorpay Gateway...</span>
       </div>
     );

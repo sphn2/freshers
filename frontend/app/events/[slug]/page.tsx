@@ -82,18 +82,14 @@ export default function EventRegistrationPage() {
       if (!paymentToken) {
         throw new Error("A secure booking link could not be created. Please submit again.");
       }
-      if (registration.status === "PAID" || registration.ticket_price === 0) {
-        const ticketResponse = registration.ticket_id
-          ? await api.getTicket(registration.ticket_id, paymentToken).catch(() => null)
-          : null;
-        router.push(
-          ticketResponse?.ticket
-            ? `/tickets/${ticketResponse.ticket.id}#access_token=${encodeURIComponent(paymentToken)}`
-            : `/checkout/${registration.id}#access_token=${encodeURIComponent(paymentToken)}`,
-        );
-      } else {
-        router.push(`/checkout/${registration.id}#access_token=${encodeURIComponent(paymentToken)}`);
+      const targetPath = (registration.status === "PAID" || registration.ticket_price === 0)
+        ? (registration.ticket_id ? `/tickets/${registration.ticket_id}#access_token=${encodeURIComponent(paymentToken)}` : `/checkout/${registration.id}#access_token=${encodeURIComponent(paymentToken)}`)
+        : `/checkout/${registration.id}#access_token=${encodeURIComponent(paymentToken)}`;
+
+      if (typeof window !== "undefined") {
+        window.scrollTo({ top: 0, left: 0, behavior: "instant" });
       }
+      router.push(targetPath, { scroll: true });
     } catch (err: unknown) {
       setError(errorMessage(err, "Registration failed. Please try again."));
       setShowRulesModal(false);
