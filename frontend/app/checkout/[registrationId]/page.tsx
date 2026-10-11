@@ -77,7 +77,6 @@ export default function PaymentCheckoutPage() {
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [emailError, setEmailError] = useState<string | null>(null);
   const [registrationToken, setRegistrationToken] = useState<string | undefined>();
   const [showRulesModal, setShowRulesModal] = useState(false);
   const [showFeeModal, setShowFeeModal] = useState(false);
@@ -88,11 +87,6 @@ export default function PaymentCheckoutPage() {
         const token = new URLSearchParams(window.location.hash.slice(1)).get("access_token") || undefined;
         setRegistrationToken(token);
         void loadRazorpayScript();
-        if (token) {
-          void api.sendPaymentLinkEmail(registrationId, token).catch((err: unknown) => {
-            setEmailError(errorMessage(err, "Payment link email could not be sent."));
-          });
-        }
         const data = await api.createPaymentOrder(registrationId, token);
         if (data.already_paid && data.ticket_id) {
           router.push(
@@ -237,11 +231,6 @@ export default function PaymentCheckoutPage() {
             <span>{error}</span>
           </div>
         )}
-        {emailError && (
-          <p role="status" className="border border-amber-200 bg-amber-50 p-3 text-xs font-medium text-amber-900">
-            {emailError} You can still complete payment here.
-          </p>
-        )}
 
         {/* Order Details Breakdown */}
         <div className="space-y-3 border border-slate-200 bg-white p-4 text-xs">
@@ -314,7 +303,7 @@ export default function PaymentCheckoutPage() {
 
         {/* Pay Button */}
         <button
-          onClick={handleOpenRulesModal}
+          onClick={handleProceedToRazorpay}
           disabled={processing || !order}
           className="button-primary button-accent w-full !min-h-[54px] disabled:cursor-not-allowed disabled:opacity-50"
         >
@@ -326,7 +315,7 @@ export default function PaymentCheckoutPage() {
           ) : (
             <>
               <ShieldCheck className="w-5 h-5" />
-              <span>Review Rules & Pay ₹{order?.amount} via Razorpay</span>
+              <span>Pay ₹{order?.amount} via Razorpay</span>
             </>
           )}
         </button>

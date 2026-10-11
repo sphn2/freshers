@@ -5,11 +5,11 @@ import { useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { QRCodeSVG } from "qrcode.react";
-import { CheckCircle2, Download, Loader2, Printer, RefreshCw, TicketCheck } from "lucide-react";
+import { CheckCircle2, Download, Loader2, Mail, Printer, RefreshCw, TicketCheck } from "lucide-react";
 import { errorMessage } from "@/lib/types";
 import type { Ticket as TicketData } from "@/lib/types";
 import jsPDF from "jspdf";
-import html2canvas from "html2canvas";
+import html2canvas from "html2canvas-pro";
 
 export default function DigitalTicketPage() {
   const { ticketId } = useParams<{ ticketId: string }>();
@@ -20,6 +20,7 @@ export default function DigitalTicketPage() {
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadTicket() {
@@ -40,13 +41,13 @@ export default function DigitalTicketPage() {
 
   const handleResendEmail = async () => {
     setMessage(null);
-    setError(null);
+    setActionError(null);
     setResending(true);
     try {
       await api.resendTicket(ticketId);
       setMessage("Digital ticket email resent successfully!");
     } catch (err: unknown) {
-      setError(errorMessage(err, "Failed resending email."));
+      setActionError(errorMessage(err, "Failed resending email."));
     } finally {
       setResending(false);
     }
@@ -55,6 +56,8 @@ export default function DigitalTicketPage() {
   const handleDownloadPdf = async () => {
     const element = document.getElementById("digital-ticket-card");
     if (!element) return;
+    setActionError(null);
+    setMessage(null);
     setDownloadingPdf(true);
     try {
       const canvas = await html2canvas(element, {
@@ -62,6 +65,7 @@ export default function DigitalTicketPage() {
         useCORS: true,
         logging: false,
         backgroundColor: "#ffffff",
+        ignoreElements: (el) => el.getAttribute("data-html2canvas-ignore") === "true",
       });
       const imgData = canvas.toDataURL("image/png");
       const pdf = new jsPDF({
@@ -72,20 +76,29 @@ export default function DigitalTicketPage() {
 
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = pdf.internal.pageSize.getHeight();
-      const imgWidth = pdfWidth - 30;
+      const margin = 15;
+      const imgWidth = pdfWidth - margin * 2;
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-      pdf.addImage(imgData, "PNG", 15, 15, imgWidth, Math.min(imgHeight, pdfHeight - 30));
+      pdf.addImage(imgData, "PNG", margin, margin, imgWidth, Math.min(imgHeight, pdfHeight - margin * 2));
       pdf.save(`Ticket_${ticket?.roll_number || "pass"}_${ticket?.ticket_code || "entry"}.pdf`);
     } catch (err: unknown) {
-      setError(errorMessage(err, "Failed downloading ticket PDF."));
+      setActionError(errorMessage(err, "Failed downloading ticket PDF."));
     } finally {
       setDownloadingPdf(false);
     }
   };
 
   if (loading) {
-    return <div className="p-8 text-center text-slate-400 font-medium">Loading digital ticket pass...</div>;
+    return (
+      <div className="panel mx-auto max-w-md p-8 text-center text-slate-600 space-y-3">
+        <Loader2 className="mx-auto h-7 w-7 animate-spin text-amber-600" />
+        <p className="font-semibold text-slate-800">Loading digital ticket pass...</p>
+        <p className="text-xs text-slate-500">
+          This ticket has been sent to your email, also check in your spam folder.
+        </p>
+      </div>
+    );
   }
 
   if (error || !ticket) {
@@ -103,6 +116,20 @@ export default function DigitalTicketPage() {
         <div role="status" className="flex items-center gap-2 border border-emerald-200 bg-emerald-50 p-3.5 text-xs font-semibold text-emerald-800">
           <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
           <span>{message}</span>
+        </div>
+      )}
+
+      {/* Action Error Notification Banner */}
+      {actionError && (
+        <div role="alert" className="flex items-center justify-between gap-2 border border-rose-200 bg-rose-50 p-3.5 text-xs font-semibold text-rose-800">
+          <span>{actionError}</span>
+          <button
+            type="button"
+            onClick={() => setActionError(null)}
+            className="text-xs text-rose-600 hover:text-rose-900 font-bold ml-2"
+          >
+            ✕
+          </button>
         </div>
       )}
 
@@ -194,7 +221,10 @@ export default function DigitalTicketPage() {
         </div>
 
         {/* Download PDF & Action Buttons */}
-        <div className="flex flex-wrap items-center justify-center gap-3 border-t border-slate-200 bg-[#f7f4ec] p-4">
+        <div
+          data-html2canvas-ignore="true"
+          className="flex flex-wrap items-center justify-center gap-3 border-t border-slate-200 bg-[#f7f4ec] p-4"
+        >
           <button
             type="button"
             onClick={handleDownloadPdf}
@@ -231,6 +261,14 @@ export default function DigitalTicketPage() {
             </button>
           )}
         </div>
+      </div>
+
+      {/* Email Delivery Note */}
+      <div className="flex items-start sm:items-center gap-3 border border-amber-200 bg-amber-50/90 p-3.5 text-xs text-amber-950">
+        <Mail className="h-4 w-4 text-amber-700 shrink-0 mt-0.5 sm:mt-0" />
+        <p className="leading-relaxed">
+          <span className="font-bold">Note:</span> This ticket has been sent to your email, also check in your spam folder.
+        </p>
       </div>
     </div>
   );

@@ -63,14 +63,15 @@ class ValidationService:
         context: dict,
         ticket_id: str,
     ) -> None:
-        # Non-blocking notification dispatch for rapid scan speeds
+        # Non-blocking notification dispatch protected by savepoint
         try:
-            email_service.enqueue_email(
-                recipient=recipient,
-                subject=subject,
-                template_name=template_name,
-                context=context,
-            )
+            with db.savepoint():
+                email_service.enqueue_email(
+                    recipient=recipient,
+                    subject=subject,
+                    template_name=template_name,
+                    context=context,
+                )
         except Exception:
             pass
 

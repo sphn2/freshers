@@ -29,8 +29,17 @@ function FoodScannerContent() {
   const [requestError, setRequestError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!result || typeof navigator.vibrate !== "function") return;
-    navigator.vibrate(result.status === "VALID" ? [90, 45, 90] : [220]);
+    if (!result) return;
+    if (typeof navigator.vibrate === "function") {
+      navigator.vibrate(result.status === "VALID" ? [90, 45, 90] : [220]);
+    }
+    if (result.status === "VALID") {
+      const timer = setTimeout(() => {
+        setResult(null);
+        setInputCode("");
+      }, 2500);
+      return () => clearTimeout(timer);
+    }
   }, [result]);
 
   useEffect(() => {
@@ -44,7 +53,8 @@ function FoodScannerContent() {
         );
         if (availableEvents.length > 0) {
           setEvents(availableEvents);
-          setSelectedEventId(availableEvents[0].id);
+          const liveEvent = availableEvents.find((e) => e.status === "LIVE");
+          setSelectedEventId(liveEvent ? liveEvent.id : availableEvents[0].id);
         }
       } catch (err: unknown) {
         setEventError(errorMessage(err, "Failed loading events."));

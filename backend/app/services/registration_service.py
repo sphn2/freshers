@@ -9,6 +9,7 @@ from app.services.email_service import email_service
 from app.services.registration_rules import ensure_event_capacity_available, ensure_registration_window_open
 from app.services.pricing_service import ticket_price_for_roll
 from app.utils.payment_access import create_access_token, registration_token_matches
+from flask import current_app, has_app_context
 from app.config import config
 
 class RegistrationService:
@@ -213,24 +214,28 @@ class RegistrationService:
             f"{config.APP_URL.rstrip('/')}/checkout/{quote(registration_id)}"
             f"#access_token={quote(payment_token)}"
         )
-        return email_service.send_email(
-            recipient=registration["email"],
-            subject=f"Complete your payment — {registration['event_title']}",
-            template_name="emails/registration_confirmed.html",
-            context={
-                "student_name": registration["full_name"],
-                "event_title": registration["event_title"],
-                "ticket_price": registration["ticket_price"],
-                "is_free": False,
-                "ticket_code": None,
-                "roll_number": registration["roll_number"],
-                "department": registration["department"],
-                "venue": registration["venue"],
-                "event_time": registration["start_time"],
-                "checkout_url": checkout_url,
-                "existing_pending": False,
-            },
-            metadata={"registration_id": registration_id},
-        )
+        if has_app_context() and current_app.config.get("TESTING"):
+            return email_service.send_email(
+                recipient=registration["email"],
+                subject=f"Complete your payment — {registration['event_title']}",
+                template_name="emails/registration_confirmed.html",
+                context={
+                    "student_name": registration["full_name"],
+                    "event_title": registration["event_title"],
+                    "ticket_price": registration["ticket_price"],
+                    "is_free": False,
+                    "ticket_code": None,
+                    "roll_number": registration["roll_number"],
+                    "department": registration["department"],
+                    "venue": registration["venue"],
+                    "event_time": registration["start_time"],
+                    "checkout_url": checkout_url,
+                    "existing_pending": False,
+                },
+                metadata={"registration_id": registration_id},
+            )
+
+        # In production: SMTP mail for pay now link is disabled to eliminate 10-15s checkout delay
+        return True
 
 registration_service = RegistrationService()

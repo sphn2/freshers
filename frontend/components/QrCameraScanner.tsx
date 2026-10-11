@@ -59,11 +59,22 @@ export function QrCameraScanner({
         const scanner = new Html5Qrcode(scannerId, {
           formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
           verbose: false,
+          experimentalFeatures: {
+            useBarCodeDetectorIfSupported: true,
+          },
         });
         scannerRef.current = scanner;
         await scanner.start(
           { facingMode: "environment" },
-          { fps: 15, qrbox: { width: 240, height: 240 } },
+          {
+            fps: 15,
+            qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+              const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+              const qrboxSize = Math.max(220, Math.floor(minEdge * 0.8));
+              return { width: qrboxSize, height: qrboxSize };
+            },
+            aspectRatio: 1.0,
+          },
           (decodedText) => {
             if (!mounted) return;
             if (!scanEnabledRef.current) return;

@@ -46,6 +46,15 @@ export default function EventRegistrationPage() {
     void load();
   }, [slug]);
 
+  useEffect(() => {
+    if (typeof window !== "undefined" && !document.querySelector('script[src*="checkout.razorpay.com"]')) {
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.async = true;
+      document.head.appendChild(script);
+    }
+  }, []);
+
   // Step 1: When student clicks Form Submit, trigger the Rules Modal
   const handleFormSubmit = (formEvent: React.FormEvent) => {
     formEvent.preventDefault();
