@@ -1,6 +1,8 @@
 import uuid
+import threading
 from io import BytesIO
 from datetime import datetime, timezone
+from flask import current_app, has_app_context
 from app.db import db
 from app.config import config
 from app.utils.security import generate_ticket_code, generate_signed_qr_token, verify_signed_qr_token
@@ -158,11 +160,11 @@ class TicketService:
             "UPDATE tickets SET public_access_token_hash = %s, updated_at = %s WHERE id = %s",
             (token_hash, datetime.now(timezone.utc).isoformat(), ticket["id"]),
         )
-        return email_service.send_email(
-            recipient=ticket["email"],
-            subject=f"Digital Ticket Issued — {ticket['event_title']}",
-            template_name="emails/ticket_issued.html",
-            context={
+        email_kwargs = {
+            "recipient": ticket["email"],
+            "subject": f"Digital Ticket Issued — {ticket['event_title']}",
+            "template_name": "emails/ticket_issued.html",
+            "context": {
                 "student_name": ticket["student_name"],
                 "event_title": ticket["event_title"],
                 "ticket_code": ticket["ticket_code"],
@@ -175,8 +177,14 @@ class TicketService:
                     f"{config.APP_URL.rstrip('/')}/tickets/{ticket['id']}#ticket_token={access_token}"
                 ),
             },
-            inline_images={"ticket-qr": ticket_qr_png(ticket["qr_token"])},
-        )
+            "inline_images": {"ticket-qr": ticket_qr_png(ticket["qr_token"])},
+        }
+
+        if has_app_context() and current_app.config.get("TESTING"):
+            return email_service.send_email(**email_kwargs)
+
+        threading.Thread(target=email_service.send_email, kwargs=email_kwargs, daemon=True).start()
+        return True
 
     @staticmethod
     def resend_ticket_email(ticket_id: str, user_id: str = None):

@@ -220,12 +220,6 @@ class PaymentService:
             return PaymentService._fulfill_payment(refreshed, payment_id, signature)
         db.execute_write("UPDATE registrations SET status = 'PAID', updated_at = %s WHERE id = %s AND status = 'PENDING_PAYMENT'", (now, payment["registration_id"]))
         ticket = ticket_service.issue_ticket(payment["registration_id"])
-        email_service.send_email(
-            recipient=ticket["email"],
-            subject=f"Payment Confirmed — {ticket['event_title']}",
-            template_name="emails/payment_success.html",
-            context={"student_name": ticket["student_name"], "event_title": ticket["event_title"], "amount": payment["amount"], "ticket_code": ticket["ticket_code"]},
-        )
         audit_service.log("PAYMENT_SUCCESS", "payment", payment["id"], details={"registration_id": payment["registration_id"], "order_id": payment["razorpay_order_id"]})
         return {"status": "PAID", "registration_id": payment["registration_id"], "ticket_id": ticket["id"], "ticket_code": ticket["ticket_code"]}
 
