@@ -2,10 +2,12 @@ import uuid
 import logging
 from datetime import datetime, timezone
 import json
+from functools import lru_cache
 from app.db import db
 
 logger = logging.getLogger(__name__)
 
+@lru_cache(maxsize=256)
 def _clean_audit_user_id(user_id: str):
     if not user_id:
         return None

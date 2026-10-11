@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from functools import lru_cache
 import logging
 
 from app.db import db
@@ -15,6 +16,7 @@ from app.utils.security import verify_signed_qr_token
 logger = logging.getLogger(__name__)
 
 
+@lru_cache(maxsize=256)
 def _clean_uuid(user_id: str | None) -> str | None:
     if not user_id:
         return None
@@ -41,7 +43,8 @@ def _ticket_lookup(req, lock: bool = False):
 
     for lookup_column, lookup_value in lookups:
         query = f"""SELECT t.*, r.full_name AS student_name, r.roll_number,
-                           r.department, r.email, e.title AS event_title
+                           r.department, r.email, e.title AS event_title,
+                           e.gate_validation_enabled, e.food_validation_enabled
                     FROM tickets t
                     JOIN registrations r ON r.id = t.registration_id
                     JOIN events e ON e.id = t.event_id
@@ -82,15 +85,14 @@ class ValidationService:
     ) -> GateValidationResponse:
         with db.transaction():
             staff_id = _clean_uuid(staff_user_id)
-            event = db.execute_one(
-                "SELECT gate_validation_enabled FROM events WHERE id = %s",
-                (req.event_id,),
-            )
-            if not event or not event.get("gate_validation_enabled"):
-                raise ValueError("Gate validation is disabled for this event.")
-
             ticket = _ticket_lookup(req, lock=True)
             if not ticket or ticket["status"] == "CANCELLED":
+                event = db.execute_one(
+                    "SELECT gate_validation_enabled FROM events WHERE id = %s",
+                    (req.event_id,),
+                )
+                if not event or not event.get("gate_validation_enabled"):
+                    raise ValueError("Gate validation is disabled for this event.")
                 audit_service.log(
                     "GATE_VALIDATE_INVALID",
                     "ticket",
@@ -106,6 +108,9 @@ class ValidationService:
                     status="INVALID_TICKET",
                     message="Invalid Ticket. Ticket not found for this event.",
                 )
+
+            if not ticket.get("gate_validation_enabled"):
+                raise ValueError("Gate validation is disabled for this event.")
 
             if ticket["gate_validated_at"] is not None or ticket["status"] == "GATE_VALIDATED":
                 audit_service.log(
@@ -207,15 +212,14 @@ class ValidationService:
     ) -> FoodValidationResponse:
         with db.transaction():
             staff_id = _clean_uuid(staff_user_id)
-            event = db.execute_one(
-                "SELECT food_validation_enabled FROM events WHERE id = %s",
-                (req.event_id,),
-            )
-            if not event or not event.get("food_validation_enabled"):
-                raise ValueError("Food validation is disabled for this event.")
-
             ticket = _ticket_lookup(req, lock=True)
             if not ticket or ticket["status"] == "CANCELLED":
+                event = db.execute_one(
+                    "SELECT food_validation_enabled FROM events WHERE id = %s",
+                    (req.event_id,),
+                )
+                if not event or not event.get("food_validation_enabled"):
+                    raise ValueError("Food validation is disabled for this event.")
                 audit_service.log(
                     "FOOD_VALIDATE_INVALID",
                     "ticket",
@@ -227,6 +231,9 @@ class ValidationService:
                     status="INVALID_TICKET",
                     message="Invalid Ticket. No ticket record found.",
                 )
+
+            if not ticket.get("food_validation_enabled"):
+                raise ValueError("Food validation is disabled for this event.")
 
             food_query = "SELECT * FROM food_entitlements WHERE ticket_id = %s"
             if not db.is_sqlite:

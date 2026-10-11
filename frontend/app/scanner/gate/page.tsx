@@ -33,13 +33,6 @@ function GateScannerContent() {
     if (typeof navigator.vibrate === "function") {
       navigator.vibrate(result.status === "VALID" ? [90, 45, 90] : [220]);
     }
-    if (result.status === "VALID") {
-      const timer = setTimeout(() => {
-        setResult(null);
-        setInputCode("");
-      }, 2500);
-      return () => clearTimeout(timer);
-    }
   }, [result]);
 
   useEffect(() => {
@@ -86,7 +79,6 @@ function GateScannerContent() {
       return;
     }
     setValidating(true);
-    setResult(null);
     setRequestError(null);
 
     try {
@@ -226,8 +218,8 @@ function GateScannerContent() {
         <div className="min-w-0 md:col-span-2">
           <QrCameraScanner
             onScan={(decodedText) => void executeValidation(decodedText)}
-            scanEnabled={!validating && !result}
-            resetTrigger={result}
+            scanEnabled={!validating}
+            resetTrigger={result ? (result.ticket_code || result.status) : undefined}
           />
           {validating && (
             <p role="status" className="mt-3 bg-blue-50 px-3 py-2 text-center text-xs font-bold text-blue-800">

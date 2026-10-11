@@ -18,6 +18,7 @@ export function QrCameraScanner({
   const onScanRef = useRef(onScan);
   const scanEnabledRef = useRef(scanEnabled);
   const lastDecodedRef = useRef<string | null>(null);
+  const lastDecodedTimeRef = useRef<number>(0);
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const [active, setActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,13 +30,11 @@ export function QrCameraScanner({
 
   useEffect(() => {
     scanEnabledRef.current = scanEnabled;
-    if (scanEnabled) {
-      lastDecodedRef.current = null;
-    }
   }, [scanEnabled]);
 
   useEffect(() => {
     lastDecodedRef.current = null;
+    lastDecodedTimeRef.current = 0;
   }, [resetTrigger]);
 
   useEffect(() => {
@@ -67,10 +66,10 @@ export function QrCameraScanner({
         await scanner.start(
           { facingMode: "environment" },
           {
-            fps: 15,
+            fps: 25,
             qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
               const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-              const qrboxSize = Math.max(220, Math.floor(minEdge * 0.8));
+              const qrboxSize = Math.max(220, Math.floor(minEdge * 0.85));
               return { width: qrboxSize, height: qrboxSize };
             },
             aspectRatio: 1.0,
@@ -78,8 +77,12 @@ export function QrCameraScanner({
           (decodedText) => {
             if (!mounted) return;
             if (!scanEnabledRef.current) return;
-            if (decodedText === lastDecodedRef.current) return;
+            const now = Date.now();
+            if (decodedText === lastDecodedRef.current && now - lastDecodedTimeRef.current < 2500) {
+              return;
+            }
             lastDecodedRef.current = decodedText;
+            lastDecodedTimeRef.current = now;
             onScanRef.current(decodedText);
           },
           () => {
