@@ -100,6 +100,11 @@ class RegistrationService:
                            WHERE registration_id = %s AND status = 'CREATED'""",
                         (now.isoformat(), previous["id"]),
                     )
+                prev_hashes = [h.strip() for h in (previous.get("payment_access_token_hash") or "").split(",") if h.strip()]
+                if token_hash not in prev_hashes:
+                    prev_hashes.append(token_hash)
+                combined_token_hash = ",".join(prev_hashes[-3:])
+
                 db.execute_write(
                     """UPDATE registrations
                        SET full_name = %s, roll_number = %s, email = %s, phone = %s,
@@ -115,7 +120,7 @@ class RegistrationService:
                         data.college.strip(),
                         "PAID" if ticket_price == 0 else "PENDING_PAYMENT",
                         ticket_price,
-                        token_hash,
+                        combined_token_hash,
                         now.isoformat(),
                         previous["id"],
                     ),

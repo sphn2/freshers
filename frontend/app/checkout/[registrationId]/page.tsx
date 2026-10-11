@@ -70,6 +70,35 @@ function loadRazorpayScript(): Promise<boolean> {
   return razorpayScriptPromise;
 }
 
+function getRegistrationToken(registrationId: string): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  try {
+    const searchParams = new URLSearchParams(window.location.search);
+    const searchToken = searchParams.get("token") || searchParams.get("access_token");
+    if (searchToken) {
+      sessionStorage.setItem(`reg_token_${registrationId}`, searchToken);
+      localStorage.setItem(`reg_token_${registrationId}`, searchToken);
+      return searchToken;
+    }
+
+    const rawHash = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : window.location.hash;
+    const hashParams = new URLSearchParams(rawHash);
+    const hashToken = hashParams.get("access_token") || hashParams.get("token");
+    if (hashToken) {
+      sessionStorage.setItem(`reg_token_${registrationId}`, hashToken);
+      localStorage.setItem(`reg_token_${registrationId}`, hashToken);
+      return hashToken;
+    }
+
+    const sessionToken = sessionStorage.getItem(`reg_token_${registrationId}`);
+    if (sessionToken) return sessionToken;
+
+    const localToken = localStorage.getItem(`reg_token_${registrationId}`);
+    if (localToken) return localToken;
+  } catch {}
+  return undefined;
+}
+
 export default function PaymentCheckoutPage() {
   const { registrationId } = useParams<{ registrationId: string }>();
   const router = useRouter();
@@ -84,13 +113,21 @@ export default function PaymentCheckoutPage() {
   useEffect(() => {
     async function initCheckout() {
       try {
-        const token = new URLSearchParams(window.location.hash.slice(1)).get("access_token") || undefined;
+        const token = getRegistrationToken(registrationId);
         setRegistrationToken(token);
         void loadRazorpayScript();
         const data = await api.createPaymentOrder(registrationId, token);
         if (data.already_paid && data.ticket_id) {
+          if (token) {
+            try {
+              sessionStorage.setItem(`ticket_token_${data.ticket_id}`, token);
+              localStorage.setItem(`ticket_token_${data.ticket_id}`, token);
+            } catch {}
+          }
+          const enc = token ? encodeURIComponent(token) : "";
           router.push(
-            `/tickets/${data.ticket_id}${token ? `#access_token=${encodeURIComponent(token)}` : ""}`,
+            `/tickets/${data.ticket_id}${token ? `?token=${enc}#access_token=${enc}` : ""}`,
+            { scroll: true },
           );
           return;
         }
@@ -157,11 +194,18 @@ export default function PaymentCheckoutPage() {
               }, registrationToken);
 
               if (verifyRes.ticket_id) {
+                if (registrationToken) {
+                  try {
+                    sessionStorage.setItem(`ticket_token_${verifyRes.ticket_id}`, registrationToken);
+                    localStorage.setItem(`ticket_token_${verifyRes.ticket_id}`, registrationToken);
+                  } catch {}
+                }
                 if (typeof window !== "undefined") {
                   window.scrollTo({ top: 0, left: 0, behavior: "instant" });
                 }
+                const enc = registrationToken ? encodeURIComponent(registrationToken) : "";
                 router.push(
-                  `/tickets/${verifyRes.ticket_id}${registrationToken ? `#access_token=${encodeURIComponent(registrationToken)}` : ""}`,
+                  `/tickets/${verifyRes.ticket_id}${registrationToken ? `?token=${enc}#access_token=${enc}` : ""}`,
                   { scroll: true },
                 );
                 resolve();
@@ -236,9 +280,19 @@ export default function PaymentCheckoutPage() {
         </div>
 
         {error && (
-          <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-700 rounded-2xl text-xs font-semibold flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 flex-shrink-0" />
-            <span>{error}</span>
+          <div className="space-y-3">
+            <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-700 rounded-2xl text-xs font-semibold flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <span>{error}</span>
+            </div>
+            {!order && (
+              <a
+                href="/"
+                className="button-primary button-accent w-full !min-h-[44px] text-center flex items-center justify-center gap-2 text-xs"
+              >
+                Return to Campus Calendar
+              </a>
+            )}
           </div>
         )}
 

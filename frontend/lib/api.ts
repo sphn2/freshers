@@ -111,20 +111,32 @@ export const api = {
   createPaymentOrder: (registrationId: string, registrationToken?: string) =>
     apiFetch<PaymentOrder>("/payments/create-order", {
       method: "POST",
-      body: JSON.stringify({ registration_id: registrationId }),
+      body: JSON.stringify({
+        registration_id: registrationId,
+        registration_token: registrationToken,
+      }),
       headers: registrationToken ? { "X-Registration-Token": registrationToken } : undefined,
     }),
-  verifyPayment: (payload: {
-    registration_id: string;
-    razorpay_order_id: string;
-    razorpay_payment_id: string;
-    razorpay_signature: string;
-  }, registrationToken?: string) =>
-    apiFetch<PaymentVerification>("/payments/verify", {
+  verifyPayment: (
+    payload: {
+      registration_id: string;
+      razorpay_order_id: string;
+      razorpay_payment_id: string;
+      razorpay_signature: string;
+      registration_token?: string;
+    },
+    registrationToken?: string,
+  ) => {
+    const token = registrationToken || payload.registration_token;
+    return apiFetch<PaymentVerification>("/payments/verify", {
       method: "POST",
-      body: JSON.stringify(payload),
-      headers: registrationToken ? { "X-Registration-Token": registrationToken } : undefined,
-    }),
+      body: JSON.stringify({
+        ...payload,
+        registration_token: token,
+      }),
+      headers: token ? { "X-Registration-Token": token } : undefined,
+    });
+  },
 
   getTicket: (ticketId: string, registrationToken?: string, ticketToken?: string) =>
     apiFetch<{ ticket: Ticket }>(`/tickets/${encodeURIComponent(ticketId)}`, {

@@ -10,7 +10,7 @@ from app.utils.payment_access import registration_token_matches
 
 payments_bp = Blueprint("payments", __name__, url_prefix="/api/v1")
 
-def _can_access_registration(registration_id: str) -> bool:
+def _can_access_registration(registration_id: str, token: str | None = None) -> bool:
     registration = db.execute_one("SELECT user_id FROM registrations WHERE id = %s", (registration_id,))
     if not registration:
         return False
@@ -20,9 +20,16 @@ def _can_access_registration(registration_id: str) -> bool:
         or registration.get("user_id") == current_user["id"]
     ):
         return True
+    
+    candidate_token = (
+        token
+        or request.headers.get("X-Registration-Token")
+        or request.args.get("token")
+        or request.args.get("access_token")
+    )
     return registration_token_matches(
         registration_id,
-        request.headers.get("X-Registration-Token"),
+        candidate_token,
     )
 
 @payments_bp.route("/payments/create-order", methods=["POST"])
@@ -31,7 +38,7 @@ def create_order():
     try:
         auth_middleware()
         data = CreateOrderRequest(**(request.get_json() or {}))
-        if not _can_access_registration(data.registration_id):
+        if not _can_access_registration(data.registration_id, data.registration_token):
             return jsonify({"error": "Forbidden. You cannot pay for this registration."}), 403
         res = payment_service.create_order(data.registration_id)
         return jsonify(res), 200
@@ -48,7 +55,7 @@ def verify_payment():
     try:
         auth_middleware()
         data = VerifyPaymentRequest(**(request.get_json() or {}))
-        if not _can_access_registration(data.registration_id):
+        if not _can_access_registration(data.registration_id, data.registration_token):
             return jsonify({"error": "Forbidden. You cannot verify this registration."}), 403
         res = payment_service.verify_payment(
             registration_id=data.registration_id,

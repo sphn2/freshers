@@ -3,6 +3,7 @@ from typing import Optional
 
 class CreateOrderRequest(BaseModel):
     registration_id: str
+    registration_token: Optional[str] = None
 
 class CreateOrderResponse(BaseModel):
     order_id: str
@@ -16,6 +17,7 @@ class VerifyPaymentRequest(BaseModel):
     razorpay_order_id: str
     razorpay_payment_id: str
     razorpay_signature: str
+    registration_token: Optional[str] = None
 
 class PaymentStatusResponse(BaseModel):
     payment_id: str

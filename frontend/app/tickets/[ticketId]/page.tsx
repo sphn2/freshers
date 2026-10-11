@@ -11,6 +11,38 @@ import type { Ticket as TicketData } from "@/lib/types";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas-pro";
 
+function getTicketTokens(ticketId: string): { registrationToken?: string; ticketToken?: string } {
+  if (typeof window === "undefined") return {};
+  try {
+    const searchParams = new URLSearchParams(window.location.search);
+    const rawHash = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : window.location.hash;
+    const hashParams = new URLSearchParams(rawHash);
+
+    const regToken =
+      searchParams.get("token") ||
+      searchParams.get("access_token") ||
+      hashParams.get("access_token") ||
+      hashParams.get("token") ||
+      sessionStorage.getItem(`ticket_token_${ticketId}`) ||
+      localStorage.getItem(`ticket_token_${ticketId}`) ||
+      undefined;
+
+    const tktToken =
+      searchParams.get("ticket_token") ||
+      hashParams.get("ticket_token") ||
+      undefined;
+
+    if (regToken) {
+      sessionStorage.setItem(`ticket_token_${ticketId}`, regToken);
+      localStorage.setItem(`ticket_token_${ticketId}`, regToken);
+    }
+
+    return { registrationToken: regToken, ticketToken: tktToken };
+  } catch {
+    return {};
+  }
+}
+
 export default function DigitalTicketPage() {
   const { ticketId } = useParams<{ ticketId: string }>();
   const { user } = useAuth();
@@ -25,9 +57,7 @@ export default function DigitalTicketPage() {
   useEffect(() => {
     async function loadTicket() {
       try {
-        const params = new URLSearchParams(window.location.hash.slice(1));
-        const registrationToken = params.get("access_token") || undefined;
-        const ticketToken = params.get("ticket_token") || undefined;
+        const { registrationToken, ticketToken } = getTicketTokens(ticketId);
         const data = await api.getTicket(ticketId, registrationToken, ticketToken);
         setTicket(data.ticket);
       } catch (err: unknown) {

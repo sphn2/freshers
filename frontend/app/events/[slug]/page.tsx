@@ -82,13 +82,23 @@ export default function EventRegistrationPage() {
       if (!paymentToken) {
         throw new Error("A secure booking link could not be created. Please submit again.");
       }
-      const targetPath = (registration.status === "PAID" || registration.ticket_price === 0)
-        ? (registration.ticket_id ? `/tickets/${registration.ticket_id}#access_token=${encodeURIComponent(paymentToken)}` : `/checkout/${registration.id}#access_token=${encodeURIComponent(paymentToken)}`)
-        : `/checkout/${registration.id}#access_token=${encodeURIComponent(paymentToken)}`;
-
       if (typeof window !== "undefined") {
+        try {
+          sessionStorage.setItem(`reg_token_${registration.id}`, paymentToken);
+          localStorage.setItem(`reg_token_${registration.id}`, paymentToken);
+          if (registration.ticket_id) {
+            sessionStorage.setItem(`ticket_token_${registration.ticket_id}`, paymentToken);
+            localStorage.setItem(`ticket_token_${registration.ticket_id}`, paymentToken);
+          }
+        } catch {}
         window.scrollTo({ top: 0, left: 0, behavior: "instant" });
       }
+
+      const encodedToken = encodeURIComponent(paymentToken);
+      const targetPath = (registration.status === "PAID" || registration.ticket_price === 0)
+        ? (registration.ticket_id ? `/tickets/${registration.ticket_id}?token=${encodedToken}#access_token=${encodedToken}` : `/checkout/${registration.id}?token=${encodedToken}#access_token=${encodedToken}`)
+        : `/checkout/${registration.id}?token=${encodedToken}#access_token=${encodedToken}`;
+
       router.push(targetPath, { scroll: true });
     } catch (err: unknown) {
       setError(errorMessage(err, "Registration failed. Please try again."));
