@@ -167,6 +167,7 @@ def test_event_manager_validation_is_limited_to_assigned_events(client):
     headers = {
         "Authorization": "Bearer test-token-event-manager",
         "X-Test-User-Id": manager_id,
+        "X-Test-User-Roles": "EVENT_MANAGER,GATE_STAFF,FOOD_STAFF",
     }
     try:
         allowed = client.post(
@@ -182,6 +183,41 @@ def test_event_manager_validation_is_limited_to_assigned_events(client):
         assert allowed.status_code == 200
         assert allowed.json["status"] == "INVALID_TICKET"
         assert denied.status_code == 403
+    finally:
+        db.execute_write(
+            "DELETE FROM event_managers WHERE user_id = %s AND event_id = %s",
+            (manager_id, event["id"]),
+        )
+
+
+def test_event_manager_without_gate_or_food_privilege_is_forbidden(client):
+    event = event_service.get_event_by_slug("freshers-2k26")
+    manager_id = str(uuid.uuid4())
+    db.execute_write(
+        "INSERT INTO event_managers (id, event_id, user_id, created_at) VALUES (%s, %s, %s, %s)",
+        (str(uuid.uuid4()), event["id"], manager_id, "2026-10-07T00:00:00+00:00"),
+    )
+    headers = {
+        "Authorization": "Bearer test-token-event-manager",
+        "X-Test-User-Id": manager_id,
+        "X-Test-User-Roles": "EVENT_MANAGER",
+    }
+    try:
+        gate_res = client.post(
+            "/api/v1/validation/gate",
+            json={"event_id": event["id"], "ticket_code": "123456"},
+            headers=headers,
+        )
+        assert gate_res.status_code == 403
+        assert "Forbidden" in gate_res.json["error"]
+
+        food_res = client.post(
+            "/api/v1/validation/food",
+            json={"event_id": event["id"], "ticket_code": "123456"},
+            headers=headers,
+        )
+        assert food_res.status_code == 403
+        assert "Forbidden" in food_res.json["error"]
     finally:
         db.execute_write(
             "DELETE FROM event_managers WHERE user_id = %s AND event_id = %s",

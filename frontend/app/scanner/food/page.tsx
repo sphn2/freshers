@@ -10,14 +10,14 @@ import { QrCameraScanner } from "@/components/QrCameraScanner";
 
 export default function FoodScannerPage() {
   return (
-    <ProtectedRoute allowedRoles={["FOOD_STAFF", "ADMIN", "EVENT_MANAGER"]}>
+    <ProtectedRoute allowedRoles={["FOOD_STAFF"]}>
       <FoodScannerContent />
     </ProtectedRoute>
   );
 }
 
 function FoodScannerContent() {
-  const { role } = useAuth();
+  const { role, hasRole } = useAuth();
   const [events, setEvents] = useState<Event[]>([]);
   const [selectedEventId, setSelectedEventId] = useState<string>("");
   const [foodLocation, setFoodLocation] = useState<string>("Counter A (Main)");
@@ -38,7 +38,8 @@ function FoodScannerContent() {
   useEffect(() => {
     async function loadEvents() {
       try {
-        const data = role === "EVENT_MANAGER"
+        const isManagerOnly = hasRole(["EVENT_MANAGER"]) && !hasRole(["ADMIN", "SUPER_ADMIN"]);
+        const data = isManagerOnly
           ? await api.adminListEvents()
           : await api.getOperationalEvents();
         const availableEvents = data.events.filter(

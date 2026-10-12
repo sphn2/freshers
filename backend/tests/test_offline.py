@@ -200,3 +200,28 @@ def test_offline_registration_rolls_back_if_ticket_issue_fails(monkeypatch):
             ) is None
         finally:
             restore_event(event["id"], original)
+
+
+def test_offline_endpoints_require_offline_collector_privilege():
+    app = create_app()
+    with app.test_client() as client:
+        # User has only EVENT_MANAGER role, with Cash Desk toggle OFF
+        unauthorized_headers = {
+            "Authorization": "Bearer test-token-event-manager",
+            "X-Test-User-Roles": "EVENT_MANAGER",
+        }
+        summary_res = client.get("/api/v1/offline/summary", headers=unauthorized_headers)
+        assert summary_res.status_code == 403
+        assert "Forbidden" in summary_res.json["error"]
+
+        reg_res = client.post("/api/v1/offline/registrations", json={}, headers=unauthorized_headers)
+        assert reg_res.status_code == 403
+        assert "Forbidden" in reg_res.json["error"]
+
+        # User has OFFLINE_COLLECTOR role (Cash Desk toggle ON)
+        authorized_headers = {
+            "Authorization": "Bearer test-token-collector",
+            "X-Test-User-Roles": "OFFLINE_COLLECTOR",
+        }
+        auth_summary_res = client.get("/api/v1/offline/summary", headers=authorized_headers)
+        assert auth_summary_res.status_code == 200

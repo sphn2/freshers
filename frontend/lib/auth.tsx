@@ -12,16 +12,19 @@ interface AuthUser {
   email: string;
   full_name: string;
   role: Role;
+  roles?: Role[];
 }
 
 interface AuthContextType {
   user: AuthUser | null;
   role: Role;
+  roles: Role[];
   token: string | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<Role>;
   logout: () => Promise<void>;
   hasRole: (allowedRoles: Role[]) => boolean;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -34,6 +37,7 @@ function selectRole(roles: string[]): Role {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [role, setRole] = useState<Role>("STUDENT");
+  const [roles, setRoles] = useState<Role[]>([]);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(Boolean(supabase));
   const hydratedToken = useRef<string | null>(null);
@@ -41,8 +45,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const hydratingPromise = useRef<Promise<Role> | null>(null);
   const router = useRouter();
 
-  const hydrate = (accessToken: string, fallbackUser: { id: string; email?: string | null }): Promise<Role> => {
-    if (hydratedToken.current === accessToken && hydratedRole.current) {
+  const hydrate = (accessToken: string, fallbackUser: { id: string; email?: string | null }, forceRefresh = false): Promise<Role> => {
+    if (!forceRefresh && hydratedToken.current === accessToken && hydratedRole.current) {
       return Promise.resolve(hydratedRole.current);
     }
     if (hydratingPromise.current) {
@@ -53,16 +57,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const response = await fetch(`${getApiBaseUrl()}/auth/me`, { headers: { Authorization: `Bearer ${accessToken}` } });
         if (!response.ok) throw new Error("Your account could not be authorized for this platform.");
         const data = await response.json();
-        const assignedRole = selectRole(data.roles || []);
+        const rolesList: Role[] = Array.isArray(data.roles) ? (data.roles as Role[]) : [];
+        const assignedRole = selectRole(rolesList);
         hydratedToken.current = accessToken;
         hydratedRole.current = assignedRole;
         setToken(accessToken);
         setRole(assignedRole);
+        setRoles(rolesList);
         setUser({
           id: data.user?.id || fallbackUser.id,
           email: data.user?.email || fallbackUser.email || "",
           full_name: data.user?.full_name || fallbackUser.email?.split("@")[0] || "Sphoorthy User",
           role: assignedRole,
+          roles: rolesList,
         });
         return assignedRole;
       } finally {
@@ -96,6 +103,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         hydratedRole.current = null;
         setToken(null);
         setRole("STUDENT");
+        setRoles(["STUDENT"]);
         setUser(null);
         return;
       }
@@ -108,7 +116,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!supabase) throw new Error("Supabase client configuration is missing.");
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error || !data.session || !data.user) throw new Error(error?.message || "Unable to sign in.");
-    return hydrate(data.session.access_token, data.user);
+    return hydrate(data.session.access_token, data.user, true);
   };
 
   const logout = async () => {
@@ -118,18 +126,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     setToken(null);
     setRole("STUDENT");
+    setRoles(["STUDENT"]);
     setUser(null);
     hydratedToken.current = null;
     hydratedRole.current = null;
     router.push("/");
   };
 
-  const checkRole = (allowedRoles: Role[]) => {
-    if (role === "SUPER_ADMIN") return true;
-    return allowedRoles.includes(role);
+  const refreshUser = async () => {
+    const client = supabase;
+    if (!client) return;
+    const { data } = await client.auth.getSession();
+    if (data.session?.access_token && data.session.user) {
+      hydratedToken.current = null;
+      hydratedRole.current = null;
+      await hydrate(data.session.access_token, data.session.user, true);
+    }
   };
 
-  return <AuthContext.Provider value={{ user, role, token, loading, login, logout, hasRole: checkRole }}>{children}</AuthContext.Provider>;
+  const checkRole = (allowedRoles: Role[]) => {
+    if (roles.includes("SUPER_ADMIN") || role === "SUPER_ADMIN") return true;
+    return allowedRoles.some((candidate) => roles.includes(candidate) || role === candidate);
+  };
+
+  return (
+    <AuthContext.Provider value={{ user, role, roles, token, loading, login, logout, hasRole: checkRole, refreshUser }}>
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth() {

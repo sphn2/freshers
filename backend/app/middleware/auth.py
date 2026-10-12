@@ -81,12 +81,26 @@ def _decode_supabase_token(token: str) -> dict:
 def _set_test_identity(token: str = None) -> bool:
     if not current_app.config.get("TESTING"):
         return False
+    test_roles_header = request.headers.get("X-Test-User-Roles")
+    if test_roles_header:
+        raw_roles = [r.strip().upper() for r in test_roles_header.split(",") if r.strip()]
+        mapped_roles = [
+            {"MANAGER": "EVENT_MANAGER", "COLLECTOR": "OFFLINE_COLLECTOR", "GATE": "GATE_STAFF", "FOOD": "FOOD_STAFF"}.get(r, r)
+            for r in raw_roles
+        ]
+        g.current_user = {
+            "id": request.headers.get("X-Test-User-Id", "00000000-0000-0000-0000-000000000001"),
+            "email": request.headers.get("X-Test-User-Email", "test.user@sphoorthy.ac.in"),
+        }
+        g.user_roles = mapped_roles
+        return True
+
     test_role = request.headers.get("X-Test-User-Role")
     if token and token.startswith("test-token-"):
         test_role = token.removeprefix("test-token-").replace("-", "_")
     if not test_role or test_role.upper() not in {
         "ADMIN", "EVENT_MANAGER", "MANAGER", "OFFLINE_COLLECTOR", "COLLECTOR",
-        "GATE", "GATE_STAFF", "FOOD", "FOOD_STAFF", "STUDENT"
+        "GATE", "GATE_STAFF", "FOOD", "FOOD_STAFF", "STUDENT", "SUPER_ADMIN"
     }:
         return False
     role_name = {

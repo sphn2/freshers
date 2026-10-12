@@ -21,13 +21,14 @@ def _manager_can_access_event(event_id: str, user_id: str) -> bool:
 
 
 @validation_bp.route("/gate", methods=["POST"])
-@require_roles("GATE_STAFF", "ADMIN", "EVENT_MANAGER")
+@require_roles("GATE_STAFF", "SUPER_ADMIN")
 def validate_gate():
     try:
         data = GateValidationRequest(**(request.get_json() or {}))
         if (
             "EVENT_MANAGER" in g.user_roles
             and "ADMIN" not in g.user_roles
+            and "SUPER_ADMIN" not in g.user_roles
             and not _manager_can_access_event(data.event_id, g.current_user["id"])
         ):
             return jsonify({"error": "Forbidden. Event not assigned to you."}), 403
@@ -42,13 +43,14 @@ def validate_gate():
         return internal_error("validating gate entry")
 
 @validation_bp.route("/food", methods=["POST"])
-@require_roles("FOOD_STAFF", "ADMIN", "EVENT_MANAGER")
+@require_roles("FOOD_STAFF", "SUPER_ADMIN")
 def validate_food():
     try:
         data = FoodValidationRequest(**(request.get_json() or {}))
         if (
             "EVENT_MANAGER" in g.user_roles
             and "ADMIN" not in g.user_roles
+            and "SUPER_ADMIN" not in g.user_roles
             and not _manager_can_access_event(data.event_id, g.current_user["id"])
         ):
             return jsonify({"error": "Forbidden. Event not assigned to you."}), 403

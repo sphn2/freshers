@@ -30,7 +30,7 @@ export function SiteProviderFrame({ children }: { children: React.ReactNode }) {
 
 function SiteFrame({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { user, role, logout } = useAuth();
+  const { user, role, hasRole, logout } = useAuth();
   const [currentYear, setCurrentYear] = useState<number>(2026);
 
   useEffect(() => {
@@ -44,33 +44,36 @@ function SiteFrame({ children }: { children: React.ReactNode }) {
     }
   }, [pathname]);
 
-  // Strict role-isolated navigation links: GATE_STAFF sees ONLY Gate Desk, FOOD_STAFF sees ONLY Food Counter
+  // Dynamically build desk and management links according to granted privileges
   let links: { href: string; label: string; icon: React.ElementType }[] = [];
 
   if (!user || role === "STUDENT") {
     links = [
       { href: "/", label: "What's on", icon: CalendarDays },
     ];
-  } else if (role === "GATE_STAFF") {
-    links = [
-      { href: "/scanner/gate", label: "Gate Entry Desk", icon: QrCode },
-    ];
-  } else if (role === "FOOD_STAFF") {
-    links = [
-      { href: "/scanner/food", label: "Food Counter Desk", icon: Utensils },
-    ];
-  } else if (role === "OFFLINE_COLLECTOR") {
-    links = [
-      { href: "/offline", label: "Cash Desk", icon: Banknote },
-    ];
-  } else if (role === "SUPER_ADMIN" || role === "ADMIN" || role === "EVENT_MANAGER") {
-    links = [
-      { href: "/", label: "What's on", icon: CalendarDays },
-      { href: "/scanner/gate", label: "Gate Desk", icon: QrCode },
-      { href: "/scanner/food", label: "Food Counter", icon: Utensils },
-      { href: "/offline", label: "Cash Desk", icon: Banknote },
-      { href: "/admin", label: "Operations", icon: ShieldCheck },
-    ];
+  } else {
+    // Show campus events calendar link for administrative or event coordination staff
+    if (hasRole(["SUPER_ADMIN", "ADMIN", "EVENT_MANAGER"])) {
+      links.push({ href: "/", label: "What's on", icon: CalendarDays });
+    }
+
+    if (hasRole(["GATE_STAFF"])) {
+      links.push({ href: "/scanner/gate", label: "Gate Desk", icon: QrCode });
+    }
+    if (hasRole(["FOOD_STAFF"])) {
+      links.push({ href: "/scanner/food", label: "Food Counter", icon: Utensils });
+    }
+    if (hasRole(["OFFLINE_COLLECTOR"])) {
+      links.push({ href: "/offline", label: "Cash Desk", icon: Banknote });
+    }
+    if (hasRole(["SUPER_ADMIN", "ADMIN", "EVENT_MANAGER"])) {
+      links.push({ href: "/admin", label: "Operations", icon: ShieldCheck });
+    }
+
+    // Fallback: If no operational desk has been granted yet, still provide "What's on"
+    if (links.length === 0) {
+      links.push({ href: "/", label: "What's on", icon: CalendarDays });
+    }
   }
 
   return (

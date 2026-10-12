@@ -10,14 +10,14 @@ import { QrCameraScanner } from "@/components/QrCameraScanner";
 
 export default function GateScannerPage() {
   return (
-    <ProtectedRoute allowedRoles={["GATE_STAFF", "ADMIN", "EVENT_MANAGER"]}>
+    <ProtectedRoute allowedRoles={["GATE_STAFF"]}>
       <GateScannerContent />
     </ProtectedRoute>
   );
 }
 
 function GateScannerContent() {
-  const { role } = useAuth();
+  const { role, hasRole } = useAuth();
   const [events, setEvents] = useState<Event[]>([]);
   const [selectedEventId, setSelectedEventId] = useState<string>("");
   const [gateLocation, setGateLocation] = useState<string>("Gate 1 Main");
@@ -38,7 +38,8 @@ function GateScannerContent() {
   useEffect(() => {
     async function loadEvents() {
       try {
-        const data = role === "EVENT_MANAGER"
+        const isManagerOnly = hasRole(["EVENT_MANAGER"]) && !hasRole(["ADMIN", "SUPER_ADMIN"]);
+        const data = isManagerOnly
           ? await api.adminListEvents()
           : await api.getOperationalEvents();
         const availableEvents = data.events.filter(

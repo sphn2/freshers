@@ -32,7 +32,7 @@ export default function AdminDashboardPage() {
 type Tab = "overview" | "registrations" | "payments" | "entries" | "offline" | "audit" | "events" | "accounts";
 
 function AdminDashboardContent() {
-  const { role } = useAuth();
+  const { role, user, refreshUser } = useAuth();
   const isSuperAdmin = role === "SUPER_ADMIN";
   const isAdmin = role === "SUPER_ADMIN" || role === "ADMIN";
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
@@ -234,6 +234,9 @@ function AdminDashboardContent() {
     try {
       const res = await api.updateStaffPrivilege(account.id, roleName, newEnabled);
       setStatusMsg(`✅ ${res.message}`);
+      if (user?.id === account.id) {
+        void refreshUser();
+      }
     } catch (err: unknown) {
       setStatusMsg(`❌ ${errorMessage(err, "Failed updating privilege toggle.")}`);
       void loadStaffAccounts();

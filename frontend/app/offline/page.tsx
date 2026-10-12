@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { ProtectedRoute } from "@/lib/auth";
+import { ProtectedRoute, useAuth } from "@/lib/auth";
 import { errorMessage } from "@/lib/types";
 import type { CollectorSummary, Event, OfflineRegistrationResult } from "@/lib/types";
 import { registrationAvailability } from "@/lib/registration";
@@ -10,13 +10,14 @@ import { Banknote, CheckCircle2, AlertCircle, Loader2, ShieldCheck } from "lucid
 
 export default function OfflineCollectorPage() {
   return (
-    <ProtectedRoute allowedRoles={["SUPER_ADMIN", "ADMIN", "EVENT_MANAGER", "OFFLINE_COLLECTOR"]}>
+    <ProtectedRoute allowedRoles={["OFFLINE_COLLECTOR"]}>
       <OfflineCollectorContent />
     </ProtectedRoute>
   );
 }
 
 function OfflineCollectorContent() {
+  const { hasRole } = useAuth();
   const [events, setEvents] = useState<Event[]>([]);
   const [selectedEventId, setSelectedEventId] = useState<string>("");
   const [summary, setSummary] = useState<CollectorSummary | null>(null);
@@ -46,7 +47,10 @@ function OfflineCollectorContent() {
   useEffect(() => {
     async function loadEvents() {
       try {
-        const data = await api.getOperationalEvents();
+        const isManagerOnly = hasRole(["EVENT_MANAGER"]) && !hasRole(["ADMIN", "SUPER_ADMIN"]);
+        const data = isManagerOnly
+          ? await api.adminListEvents()
+          : await api.getOperationalEvents();
         const offlineEvents = data.events.filter((event) => event.allow_offline);
         if (offlineEvents.length > 0) {
           setEvents(offlineEvents);
@@ -57,7 +61,7 @@ function OfflineCollectorContent() {
       }
     }
     loadEvents();
-  }, []);
+  }, [hasRole]);
 
   useEffect(() => {
     if (selectedEventId) {
