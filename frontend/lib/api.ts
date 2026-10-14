@@ -23,6 +23,7 @@ import type {
   Ticket,
   ValidationResult,
   DailyRevenueReport,
+  PaymentGatewaySettings,
   CollectorDailyRow,
   Settlement,
 } from "@/lib/types";
@@ -128,9 +129,13 @@ export const api = {
   verifyPayment: (
     payload: {
       registration_id: string;
-      razorpay_order_id: string;
-      razorpay_payment_id: string;
-      razorpay_signature: string;
+      razorpay_order_id?: string;
+      razorpay_payment_id?: string;
+      razorpay_signature?: string;
+      order_id?: string;
+      payment_id?: string;
+      signature?: string;
+      gateway?: string;
       registration_token?: string;
     },
     registrationToken?: string,
@@ -318,6 +323,19 @@ export const api = {
   updateConvenienceFeeSettings: (payload: { enabled?: boolean; amount?: number }) =>
     apiFetch<{ message: string; settings: { enabled: boolean; amount: number } }>(
       "/admin/settings/convenience-fee",
+      {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      },
+    ),
+  getPaymentGatewaySettings: () =>
+    apiFetch<PaymentGatewaySettings>("/admin/settings/payment-gateways"),
+  updatePaymentGatewaySettings: (payload: {
+    default_gateway?: string;
+    gateways_enabled?: Record<string, boolean>;
+  }) =>
+    apiFetch<{ message: string; settings: PaymentGatewaySettings }>(
+      "/admin/settings/payment-gateways",
       {
         method: "PUT",
         body: JSON.stringify(payload),

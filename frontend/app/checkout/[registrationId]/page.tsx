@@ -21,7 +21,7 @@ interface RazorpayFailureResponse {
 }
 
 interface RazorpayOptions {
-  key: string;
+  key?: string;
   amount: number;
   currency: string;
   name: string;
@@ -39,16 +39,23 @@ interface RazorpayInstance {
   open: () => void;
 }
 
+interface CashfreeSDK {
+  checkout: (options: {
+    paymentSessionId: string;
+    redirectTarget?: "_self" | "_blank" | "_top" | "_modal";
+  }) => Promise<{ error?: { message: string }; paymentDetails?: unknown; redirect?: boolean }>;
+}
+
 declare global {
   interface Window {
     Razorpay?: new (options: RazorpayOptions) => RazorpayInstance;
+    Cashfree?: (config: { mode: "sandbox" | "production" }) => CashfreeSDK;
   }
 }
 
 let razorpayScriptPromise: Promise<boolean> | null = null;
-
 function loadRazorpayScript(): Promise<boolean> {
-  if (window.Razorpay) return Promise.resolve(true);
+  if (typeof window !== "undefined" && window.Razorpay) return Promise.resolve(true);
   if (razorpayScriptPromise) return razorpayScriptPromise;
 
   razorpayScriptPromise = new Promise((resolve) => {
@@ -68,6 +75,29 @@ function loadRazorpayScript(): Promise<boolean> {
     document.body.appendChild(script);
   });
   return razorpayScriptPromise;
+}
+
+let cashfreeScriptPromise: Promise<boolean> | null = null;
+function loadCashfreeScript(): Promise<boolean> {
+  if (typeof window !== "undefined" && window.Cashfree) return Promise.resolve(true);
+  if (cashfreeScriptPromise) return cashfreeScriptPromise;
+
+  cashfreeScriptPromise = new Promise((resolve) => {
+    const script = document.createElement("script");
+    script.src = "https://sdk.cashfree.com/js/v3/cashfree.js";
+    script.async = true;
+    script.onload = () => {
+      const loaded = Boolean(window.Cashfree);
+      if (!loaded) cashfreeScriptPromise = null;
+      resolve(loaded);
+    };
+    script.onerror = () => {
+      cashfreeScriptPromise = null;
+      resolve(false);
+    };
+    document.body.appendChild(script);
+  });
+  return cashfreeScriptPromise;
 }
 
 function getRegistrationToken(registrationId: string): string | undefined {
@@ -115,23 +145,69 @@ export default function PaymentCheckoutPage() {
       try {
         const token = getRegistrationToken(registrationId);
         setRegistrationToken(token);
-        void loadRazorpayScript();
-        const data = await api.createPaymentOrder(registrationId, token);
-        if (data.already_paid && data.ticket_id) {
-          if (token) {
+
+        // Check for return redirect from Cashfree or PhonePe
+        if (typeof window !== "undefined") {
+          const searchParams = new URLSearchParams(window.location.search);
+          const callbackOrderId = searchParams.get("order_id");
+          const callbackGateway = searchParams.get("gateway")?.toUpperCase();
+
+          if (callbackOrderId && (callbackGateway === "PHONEPE" || callbackGateway === "CASHFREE")) {
+            setProcessing(true);
             try {
-              sessionStorage.setItem(`ticket_token_${data.ticket_id}`, token);
-              localStorage.setItem(`ticket_token_${data.ticket_id}`, token);
-            } catch {}
+              const verifyRes = await api.verifyPayment(
+                {
+                  registration_id: registrationId,
+                  order_id: callbackOrderId,
+                  gateway: callbackGateway,
+                },
+                token,
+              );
+              if (verifyRes.ticket_id) {
+                if (token) {
+                  try {
+                    sessionStorage.setItem(`ticket_token_${verifyRes.ticket_id}`, token);
+                    localStorage.setItem(`ticket_token_${verifyRes.ticket_id}`, token);
+                  } catch {}
+                }
+                const enc = token ? encodeURIComponent(token) : "";
+                router.push(
+                  `/tickets/${verifyRes.ticket_id}${token ? `?token=${enc}#access_token=${enc}` : ""}`,
+                  { scroll: true },
+                );
+                return;
+              }
+            } catch (err: unknown) {
+              setError(errorMessage(err, `Verifying ${callbackGateway} payment returned an error.`));
+            } finally {
+              setProcessing(false);
+            }
           }
-          const enc = token ? encodeURIComponent(token) : "";
-          router.push(
-            `/tickets/${data.ticket_id}${token ? `?token=${enc}#access_token=${enc}` : ""}`,
-            { scroll: true },
-          );
-          return;
         }
-        setOrder(data);
+
+        void loadRazorpayScript();
+        void loadCashfreeScript();
+
+        try {
+          const data = await api.createPaymentOrder(registrationId, token);
+          if (data.already_paid && data.ticket_id) {
+            if (token) {
+              try {
+                sessionStorage.setItem(`ticket_token_${data.ticket_id}`, token);
+                localStorage.setItem(`ticket_token_${data.ticket_id}`, token);
+              } catch {}
+            }
+            const enc = token ? encodeURIComponent(token) : "";
+            router.push(
+              `/tickets/${data.ticket_id}${token ? `?token=${enc}#access_token=${enc}` : ""}`,
+              { scroll: true },
+            );
+            return;
+          }
+          setOrder(data);
+        } catch (err: unknown) {
+          setError((prev) => prev || errorMessage(err, "Failed initializing payment order."));
+        }
       } catch (err: unknown) {
         setError(errorMessage(err, "Failed initializing payment order."));
       } finally {
@@ -156,13 +232,80 @@ export default function PaymentCheckoutPage() {
     setShowRulesModal(true);
   };
 
-  const handleProceedToRazorpay = async () => {
+  const handleProceedToPayment = async () => {
     setShowRulesModal(false);
     setError(null);
     if (!order) return;
     setProcessing(true);
 
     try {
+      const activeGateway = (order.gateway || "RAZORPAY").toUpperCase();
+
+      if (activeGateway === "PHONEPE") {
+        if (!order.redirect_url) {
+          throw new Error("PhonePe payment URL was not generated. Please retry.");
+        }
+        window.location.href = order.redirect_url;
+        return;
+      }
+
+      if (activeGateway === "CASHFREE") {
+        const loaded = await loadCashfreeScript();
+        if (!loaded || !window.Cashfree) {
+          throw new Error("Cashfree SDK failed to load. Please check your internet connection.");
+        }
+        if (!order.payment_session_id) {
+          throw new Error("Cashfree payment session was not generated. Please retry.");
+        }
+        const cashfree = window.Cashfree({
+          mode: order.environment === "production" ? "production" : "sandbox",
+        });
+        const checkoutResult = await cashfree.checkout({
+          paymentSessionId: order.payment_session_id,
+          redirectTarget: "_modal",
+        });
+        if (checkoutResult?.error) {
+          const msg = checkoutResult.error.message || "Payment cancelled.";
+          if (!msg.toLowerCase().includes("cancel") && !msg.toLowerCase().includes("closed")) {
+            setError(msg);
+          }
+          return;
+        }
+
+        // If modal was completed or payment details returned, verify immediately
+        try {
+          const verifyRes = await api.verifyPayment(
+            {
+              registration_id: registrationId,
+              order_id: order.order_id,
+              gateway: "CASHFREE",
+            },
+            registrationToken,
+          );
+          if (verifyRes.ticket_id) {
+            if (registrationToken) {
+              try {
+                sessionStorage.setItem(`ticket_token_${verifyRes.ticket_id}`, registrationToken);
+                localStorage.setItem(`ticket_token_${verifyRes.ticket_id}`, registrationToken);
+              } catch {}
+            }
+            if (typeof window !== "undefined") {
+              window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+            }
+            const enc = registrationToken ? encodeURIComponent(registrationToken) : "";
+            router.push(
+              `/tickets/${verifyRes.ticket_id}${registrationToken ? `?token=${enc}#access_token=${enc}` : ""}`,
+              { scroll: true },
+            );
+            return;
+          }
+        } catch (err: unknown) {
+          setError(errorMessage(err, "Payment could not be verified. If debited, please refresh this page."));
+        }
+        return;
+      }
+
+      // Default: Razorpay
       const loaded = await loadRazorpayScript();
       if (!loaded) {
         throw new Error("Razorpay SDK failed to load. Please check your internet connection.");
@@ -186,12 +329,16 @@ export default function PaymentCheckoutPage() {
             razorpay_signature: string;
           }) {
             try {
-              const verifyRes = await api.verifyPayment({
-                registration_id: registrationId,
-                razorpay_order_id: response.razorpay_order_id,
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_signature: response.razorpay_signature,
-              }, registrationToken);
+              const verifyRes = await api.verifyPayment(
+                {
+                  registration_id: registrationId,
+                  razorpay_order_id: response.razorpay_order_id,
+                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_signature: response.razorpay_signature,
+                  gateway: "RAZORPAY",
+                },
+                registrationToken,
+              );
 
               if (verifyRes.ticket_id) {
                 if (registrationToken) {
@@ -249,11 +396,22 @@ export default function PaymentCheckoutPage() {
     }
   };
 
+  const callbackGateway = typeof window !== "undefined"
+    ? new URLSearchParams(window.location.search).get("gateway")?.toUpperCase()
+    : null;
+  const currentGateway = (order?.gateway || callbackGateway || "RAZORPAY").toUpperCase();
+  const gatewayName =
+    currentGateway === "CASHFREE"
+      ? "Cashfree"
+      : currentGateway === "PHONEPE"
+        ? "PhonePe"
+        : "Razorpay";
+
   if (loading) {
     return (
       <div className="min-h-[60vh] flex flex-col items-center justify-center p-8 text-center text-slate-400 font-medium gap-3">
         <Loader2 className="w-6 h-6 animate-spin text-[#d3a52b]" />
-        <span>Initializing Razorpay Gateway...</span>
+        <span>Initializing Secure Checkout...</span>
       </div>
     );
   }
@@ -276,7 +434,7 @@ export default function PaymentCheckoutPage() {
       <div className="panel space-y-5 p-5 md:p-7">
         <div className="flex items-center gap-2 border-b border-slate-200 pb-4 text-xs font-bold uppercase tracking-[.1em] text-slate-700">
           <ShieldCheck className="h-4 w-4 text-emerald-700" />
-          Razorpay secure checkout
+          {gatewayName} secure checkout
         </div>
 
         {error && (
@@ -331,7 +489,7 @@ export default function PaymentCheckoutPage() {
           )}
           <div className="flex justify-between border-t border-slate-200 pt-2">
             <span className="text-slate-500 font-medium">Payment Gateway</span>
-            <span className="text-blue-600 font-bold">Razorpay</span>
+            <span className="text-blue-600 font-bold">{gatewayName}</span>
           </div>
           <div className="flex justify-between border-t border-slate-200 pt-3 text-sm">
             <span className="text-slate-900 font-bold">Total amount</span>
@@ -367,7 +525,7 @@ export default function PaymentCheckoutPage() {
 
         {/* Pay Button */}
         <button
-          onClick={handleProceedToRazorpay}
+          onClick={handleProceedToPayment}
           disabled={processing || !order}
           className="button-primary button-accent w-full !min-h-[54px] disabled:cursor-not-allowed disabled:opacity-50"
         >
@@ -379,20 +537,20 @@ export default function PaymentCheckoutPage() {
           ) : (
             <>
               <ShieldCheck className="w-5 h-5" />
-              <span>Pay ₹{order?.amount} via Razorpay</span>
+              <span>Pay ₹{order?.amount} via {gatewayName}</span>
             </>
           )}
         </button>
 
         <p className="text-center text-[10px] leading-5 text-slate-500">
-          Payment details are processed by Razorpay. By clicking pay, you agree to the event rules.
+          Payment details are securely processed by {gatewayName}. By clicking pay, you agree to the event rules.
         </p>
       </div>
 
       <RulesModal
         isOpen={showRulesModal}
         onClose={() => setShowRulesModal(false)}
-        onConfirm={handleProceedToRazorpay}
+        onConfirm={handleProceedToPayment}
         submitting={processing}
       />
 

@@ -53,6 +53,25 @@ class DatabaseManager:
                             ALTER TABLE student_directory ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
                             ALTER TABLE student_directory ADD COLUMN IF NOT EXISTS college_name TEXT DEFAULT 'Sphoorthy Engineering College';
 
+                            ALTER TABLE events ADD COLUMN IF NOT EXISTS payment_gateway VARCHAR(50) DEFAULT 'DEFAULT';
+                            ALTER TABLE payments ADD COLUMN IF NOT EXISTS gateway VARCHAR(50) DEFAULT 'RAZORPAY';
+                            ALTER TABLE payments ADD COLUMN IF NOT EXISTS gateway_order_id VARCHAR(255);
+                            ALTER TABLE payments ADD COLUMN IF NOT EXISTS gateway_payment_id VARCHAR(255);
+                            ALTER TABLE payments ADD COLUMN IF NOT EXISTS gateway_signature VARCHAR(512);
+
+                            INSERT INTO system_settings (key, value, updated_at)
+                            VALUES ('default_payment_gateway', 'RAZORPAY', NOW()::text)
+                            ON CONFLICT(key) DO NOTHING;
+                            INSERT INTO system_settings (key, value, updated_at)
+                            VALUES ('razorpay_enabled', 'true', NOW()::text)
+                            ON CONFLICT(key) DO NOTHING;
+                            INSERT INTO system_settings (key, value, updated_at)
+                            VALUES ('cashfree_enabled', 'true', NOW()::text)
+                            ON CONFLICT(key) DO NOTHING;
+                            INSERT INTO system_settings (key, value, updated_at)
+                            VALUES ('phonepe_enabled', 'true', NOW()::text)
+                            ON CONFLICT(key) DO NOTHING;
+
                             CREATE TABLE IF NOT EXISTS daily_settlements (
                                 id TEXT PRIMARY KEY,
                                 event_id TEXT,
@@ -352,6 +371,13 @@ class DatabaseManager:
                 "first_year_ticket_price": "REAL NOT NULL DEFAULT 500.0",
                 "second_year_ticket_price": "REAL NOT NULL DEFAULT 600.0",
                 "other_ticket_price": "REAL",
+                "payment_gateway": "TEXT DEFAULT 'DEFAULT'",
+            },
+            "payments": {
+                "gateway": "TEXT DEFAULT 'RAZORPAY'",
+                "gateway_order_id": "TEXT",
+                "gateway_payment_id": "TEXT",
+                "gateway_signature": "TEXT",
             },
             "registrations": {
                 "payment_access_token_hash": "TEXT",
@@ -428,6 +454,30 @@ class DatabaseManager:
         self.execute_write(
             """INSERT INTO system_settings (key, value, updated_at)
                VALUES ('convenience_fee_amount', '3.79', ?)
+               ON CONFLICT(key) DO NOTHING""",
+            (now_iso,)
+        )
+        self.execute_write(
+            """INSERT INTO system_settings (key, value, updated_at)
+               VALUES ('default_payment_gateway', 'RAZORPAY', ?)
+               ON CONFLICT(key) DO NOTHING""",
+            (now_iso,)
+        )
+        self.execute_write(
+            """INSERT INTO system_settings (key, value, updated_at)
+               VALUES ('razorpay_enabled', 'true', ?)
+               ON CONFLICT(key) DO NOTHING""",
+            (now_iso,)
+        )
+        self.execute_write(
+            """INSERT INTO system_settings (key, value, updated_at)
+               VALUES ('cashfree_enabled', 'true', ?)
+               ON CONFLICT(key) DO NOTHING""",
+            (now_iso,)
+        )
+        self.execute_write(
+            """INSERT INTO system_settings (key, value, updated_at)
+               VALUES ('phonepe_enabled', 'true', ?)
                ON CONFLICT(key) DO NOTHING""",
             (now_iso,)
         )

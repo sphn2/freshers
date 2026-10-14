@@ -25,6 +25,7 @@ class EventCreate(BaseModel):
     registration_open: Optional[bool] = None
     gate_validation_enabled: bool = True
     food_validation_enabled: bool = True
+    payment_gateway: Optional[str] = "DEFAULT"
     status: str = "DRAFT"
 
 class EventUpdate(BaseModel):
@@ -47,6 +48,7 @@ class EventUpdate(BaseModel):
     registration_open: Optional[bool] = None
     gate_validation_enabled: Optional[bool] = None
     food_validation_enabled: Optional[bool] = None
+    payment_gateway: Optional[str] = None
 
 class EventResponse(BaseModel):
     id: str
@@ -72,5 +74,6 @@ class EventResponse(BaseModel):
     registration_open: Optional[bool] = None
     gate_validation_enabled: bool
     food_validation_enabled: bool
+    payment_gateway: Optional[str] = "DEFAULT"
     status: str
     created_at: str

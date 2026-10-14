@@ -52,6 +52,24 @@ class Config:
     RAZORPAY_KEY_SECRET: str = os.getenv("RAZORPAY_KEY_SECRET", "")
     RAZORPAY_WEBHOOK_SECRET: str = os.getenv("RAZORPAY_WEBHOOK_SECRET", "")
 
+    # Cashfree Payments
+    CASHFREE_APP_ID: str = os.getenv("CASHFREE_APP_ID", "")
+    CASHFREE_SECRET_KEY: str = os.getenv("CASHFREE_SECRET_KEY", "")
+    CASHFREE_ENV: str = os.getenv("CASHFREE_ENV", "TEST")
+    CASHFREE_API_VERSION: str = os.getenv("CASHFREE_API_VERSION", "2023-08-01")
+
+    # PhonePe Payments
+    PHONEPE_MERCHANT_ID: str = os.getenv("PHONEPE_MERCHANT_ID", "")
+    PHONEPE_SALT_KEY: str = os.getenv("PHONEPE_SALT_KEY", "")
+    PHONEPE_SALT_INDEX: str = os.getenv("PHONEPE_SALT_INDEX", "1")
+    PHONEPE_ENV: str = os.getenv("PHONEPE_ENV", "UAT")
+    PHONEPE_HOST_URL: str = os.getenv(
+        "PHONEPE_HOST_URL",
+        "https://api-preprod.phonepe.com/apis/pg-sandbox"
+        if os.getenv("PHONEPE_ENV", "UAT").upper() in ("UAT", "TEST", "SANDBOX")
+        else "https://api.phonepe.com/apis/hermes"
+    )
+
     # SMTP Email
     SMTP_HOST: str = os.getenv("SMTP_HOST", "smtp.gmail.com")
     SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
@@ -128,6 +146,10 @@ class Config:
             "RAZORPAY_KEY_ID": self.RAZORPAY_KEY_ID,
             "RAZORPAY_KEY_SECRET": self.RAZORPAY_KEY_SECRET,
             "RAZORPAY_WEBHOOK_SECRET": self.RAZORPAY_WEBHOOK_SECRET,
+            "CASHFREE_APP_ID": self.CASHFREE_APP_ID,
+            "CASHFREE_SECRET_KEY": self.CASHFREE_SECRET_KEY,
+            "PHONEPE_MERCHANT_ID": self.PHONEPE_MERCHANT_ID,
+            "PHONEPE_SALT_KEY": self.PHONEPE_SALT_KEY,
             "SMTP_USERNAME": self.SMTP_USERNAME,
             "SMTP_PASSWORD": self.SMTP_PASSWORD,
         }

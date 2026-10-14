@@ -19,6 +19,7 @@ import type {
   DailyRevenueReport,
   CollectorDailyRow,
   Settlement,
+  PaymentGatewaySettings,
 } from "@/lib/types";
 import {
   LayoutDashboard, ShieldCheck, DollarSign, Users, Ticket, Activity,
@@ -60,7 +61,8 @@ function AdminDashboardContent() {
     start_time: "", end_time: "", registration_start: "", registration_end: "",
     capacity: 500, ticket_price: 250, allow_online: true, allow_offline: true,
     first_year_ticket_price: 500, second_year_ticket_price: 600, other_ticket_price: null,
-    gate_validation_enabled: true, food_validation_enabled: true, status: "DRAFT"
+    gate_validation_enabled: true, food_validation_enabled: true,
+    payment_gateway: "DEFAULT", status: "DRAFT"
   });
   const [editingPricesEventId, setEditingPricesEventId] = useState<string | null>(null);
   const [priceDraft, setPriceDraft] = useState({
@@ -76,9 +78,12 @@ function AdminDashboardContent() {
     start_time: "", end_time: "", registration_start: "", registration_end: "",
     capacity: 500, ticket_price: 250, allow_online: true, allow_offline: true,
     allow_autofill: true, first_year_ticket_price: 500, second_year_ticket_price: 600,
-    other_ticket_price: null, gate_validation_enabled: true, food_validation_enabled: true, status: "DRAFT"
+    other_ticket_price: null, gate_validation_enabled: true, food_validation_enabled: true,
+    payment_gateway: "DEFAULT", status: "DRAFT"
   });
   const [savingFullEvent, setSavingFullEvent] = useState(false);
+  const [gatewaySettings, setGatewaySettings] = useState<PaymentGatewaySettings | null>(null);
+  const [savingGatewaySettings, setSavingGatewaySettings] = useState(false);
 
   const [staffForm, setStaffForm] = useState({
     full_name: "",
@@ -168,9 +173,56 @@ function AdminDashboardContent() {
     }
   };
 
+  const loadGatewaySettings = async () => {
+    if (!isSuperAdmin) return;
+    try {
+      const data = await api.getPaymentGatewaySettings();
+      setGatewaySettings(data);
+    } catch {
+      // silent
+    }
+  };
+
   useEffect(() => {
-    if (isSuperAdmin) void loadFeeSettings();
+    if (isSuperAdmin) {
+      void loadFeeSettings();
+      void loadGatewaySettings();
+    }
   }, [isSuperAdmin]);
+
+  const handleUpdateDefaultGateway = async (gatewayName: string) => {
+    if (!isSuperAdmin) return;
+    setSavingGatewaySettings(true);
+    try {
+      const res = await api.updatePaymentGatewaySettings({ default_gateway: gatewayName });
+      setGatewaySettings(res.settings);
+      setStatusMsg(`✅ Global default payment gateway updated to ${gatewayName}`);
+    } catch (err: unknown) {
+      setStatusMsg(`❌ ${errorMessage(err, "Could not update payment gateway setting.")}`);
+      void loadGatewaySettings();
+    } finally {
+      setSavingGatewaySettings(false);
+    }
+  };
+
+  const handleToggleGateway = async (gatewayKey: string, enabled: boolean) => {
+    if (!isSuperAdmin || !gatewaySettings) return;
+    setSavingGatewaySettings(true);
+    try {
+      const currentEnabled = Object.fromEntries(
+        Object.entries(gatewaySettings.gateways).map(([k, v]) => [k.toLowerCase(), v.enabled])
+      );
+      currentEnabled[gatewayKey.toLowerCase()] = enabled;
+      const res = await api.updatePaymentGatewaySettings({ gateways_enabled: currentEnabled });
+      setGatewaySettings(res.settings);
+      setStatusMsg(`✅ ${gatewayKey} gateway availability updated.`);
+    } catch (err: unknown) {
+      setStatusMsg(`❌ ${errorMessage(err, "Could not update gateway toggle.")}`);
+      void loadGatewaySettings();
+    } finally {
+      setSavingGatewaySettings(false);
+    }
+  };
 
   const handleSaveFeeSettings = async (overrideEnabled?: boolean) => {
     if (!isSuperAdmin) return;
@@ -531,6 +583,7 @@ function AdminDashboardContent() {
       allow_autofill: ev.allow_autofill ?? true,
       gate_validation_enabled: ev.gate_validation_enabled ?? true,
       food_validation_enabled: ev.food_validation_enabled ?? true,
+      payment_gateway: ev.payment_gateway || "DEFAULT",
       status: ev.status || "DRAFT",
     });
   };
@@ -983,6 +1036,132 @@ function AdminDashboardContent() {
             </div>
           )}
 
+          {/* Payment Gateways Controller (SUPER ADMIN ONLY) */}
+          {isSuperAdmin && (
+            <div className="panel space-y-4 p-5 md:p-6 bg-gradient-to-br from-indigo-50/80 to-blue-50/50 border border-indigo-200 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-indigo-200/80 pb-3">
+                <div className="flex items-center gap-2 text-indigo-950">
+                  <CreditCard className="h-5 w-5 text-indigo-700 shrink-0" />
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">Payment Gateways Controller (Super Admin)</h3>
+                    <p className="text-[11px] text-indigo-800">
+                      Configure active gateways, switch global default provider, and control provider states anytime.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-bold text-indigo-900">Default Gateway:</span>
+                  <select
+                    disabled={savingGatewaySettings}
+                    value={gatewaySettings?.default_gateway || "RAZORPAY"}
+                    onChange={(e) => void handleUpdateDefaultGateway(e.target.value)}
+                    className="px-2.5 py-1 text-xs font-bold rounded-lg border border-indigo-300 bg-white text-indigo-900 shadow-2xs focus:outline-indigo-500"
+                  >
+                    <option value="RAZORPAY">Razorpay</option>
+                    <option value="CASHFREE">Cashfree</option>
+                    <option value="PHONEPE">PhonePe</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Gateways Grid */}
+              <div className="grid gap-3 sm:grid-cols-3">
+                {/* Razorpay Card */}
+                <div className={`p-4 rounded-xl border bg-white shadow-2xs flex flex-col justify-between ${
+                  gatewaySettings?.default_gateway === "RAZORPAY" ? "border-indigo-400 ring-2 ring-indigo-300" : "border-slate-200"
+                }`}>
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-extrabold text-sm text-slate-900">Razorpay</span>
+                      {gatewaySettings?.default_gateway === "RAZORPAY" && (
+                        <span className="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-700 rounded-md">
+                          DEFAULT
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-500 mb-2">Standard modal & UPI payments</p>
+                    <div className="flex items-center gap-1.5 text-[10px] font-semibold text-emerald-700">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                      <span>{gatewaySettings?.gateways?.RAZORPAY?.configured ? "Configured in .env" : "Pending Keys"}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between mt-4 pt-2 border-t border-slate-100">
+                    <span className="text-[11px] text-slate-600 font-medium">Gateway Active</span>
+                    <input
+                      type="checkbox"
+                      checked={gatewaySettings?.gateways?.RAZORPAY?.enabled ?? true}
+                      onChange={(e) => void handleToggleGateway("razorpay", e.target.checked)}
+                      disabled={savingGatewaySettings}
+                      className="w-4 h-4 accent-indigo-600 rounded cursor-pointer"
+                    />
+                  </div>
+                </div>
+
+                {/* Cashfree Card */}
+                <div className={`p-4 rounded-xl border bg-white shadow-2xs flex flex-col justify-between ${
+                  gatewaySettings?.default_gateway === "CASHFREE" ? "border-indigo-400 ring-2 ring-indigo-300" : "border-slate-200"
+                }`}>
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-extrabold text-sm text-slate-900">Cashfree</span>
+                      {gatewaySettings?.default_gateway === "CASHFREE" && (
+                        <span className="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-700 rounded-md">
+                          DEFAULT
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-500 mb-2">Seamless Drop Checkout & UPI</p>
+                    <div className="flex items-center gap-1.5 text-[10px] font-semibold text-emerald-700">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                      <span>Test / Sandbox Connected</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between mt-4 pt-2 border-t border-slate-100">
+                    <span className="text-[11px] text-slate-600 font-medium">Gateway Active</span>
+                    <input
+                      type="checkbox"
+                      checked={gatewaySettings?.gateways?.CASHFREE?.enabled ?? true}
+                      onChange={(e) => void handleToggleGateway("cashfree", e.target.checked)}
+                      disabled={savingGatewaySettings}
+                      className="w-4 h-4 accent-indigo-600 rounded cursor-pointer"
+                    />
+                  </div>
+                </div>
+
+                {/* PhonePe Card */}
+                <div className={`p-4 rounded-xl border bg-white shadow-2xs flex flex-col justify-between ${
+                  gatewaySettings?.default_gateway === "PHONEPE" ? "border-indigo-400 ring-2 ring-indigo-300" : "border-slate-200"
+                }`}>
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-extrabold text-sm text-slate-900">PhonePe</span>
+                      {gatewaySettings?.default_gateway === "PHONEPE" && (
+                        <span className="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-700 rounded-md">
+                          DEFAULT
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-500 mb-2">Standard PG Checkout & Pay Page</p>
+                    <div className="flex items-center gap-1.5 text-[10px] font-semibold text-emerald-700">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                      <span>UAT / Sandbox Connected</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between mt-4 pt-2 border-t border-slate-100">
+                    <span className="text-[11px] text-slate-600 font-medium">Gateway Active</span>
+                    <input
+                      type="checkbox"
+                      checked={gatewaySettings?.gateways?.PHONEPE?.enabled ?? true}
+                      onChange={(e) => void handleToggleGateway("phonepe", e.target.checked)}
+                      disabled={savingGatewaySettings}
+                      className="w-4 h-4 accent-indigo-600 rounded cursor-pointer"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Recent Audit Logs */}
           <div className="panel space-y-4 p-5 md:p-6">
             <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
@@ -1130,6 +1309,17 @@ function AdminDashboardContent() {
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 text-sm focus:outline-none">
                     <option value="DRAFT">Draft</option>
                     <option value="PUBLISHED">Published</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Payment Gateway</label>
+                  <select value={createForm.payment_gateway || "DEFAULT"}
+                    onChange={e => setCreateForm(p => ({...p, payment_gateway: e.target.value}))}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 text-sm focus:outline-none">
+                    <option value="DEFAULT">⚙️ System Default ({gatewaySettings?.default_gateway || "RAZORPAY"})</option>
+                    <option value="RAZORPAY">Razorpay</option>
+                    <option value="CASHFREE">Cashfree (Sandbox / Live)</option>
+                    <option value="PHONEPE">PhonePe (UAT / Live)</option>
                   </select>
                 </div>
                 <div className="flex flex-wrap gap-4 text-xs">
@@ -1427,6 +1617,25 @@ function AdminDashboardContent() {
                           className="field-control mt-1"
                         />
                       </div>
+                    </div>
+
+                    <div className="pt-2">
+                      <label className="text-[10px] font-extrabold uppercase tracking-[.08em] text-slate-600">
+                        Payment Gateway for this Event
+                      </label>
+                      <select
+                        value={editEventForm.payment_gateway || "DEFAULT"}
+                        onChange={(e) => setEditEventForm((f) => ({ ...f, payment_gateway: e.target.value }))}
+                        className="field-control mt-1 font-semibold text-xs text-slate-800"
+                      >
+                        <option value="DEFAULT">⚙️ System Default ({gatewaySettings?.default_gateway || "RAZORPAY"})</option>
+                        <option value="RAZORPAY">Razorpay</option>
+                        <option value="CASHFREE">Cashfree (Sandbox / Live)</option>
+                        <option value="PHONEPE">PhonePe (UAT / Live)</option>
+                      </select>
+                      <p className="mt-1 text-[10px] text-slate-500">
+                        Select which gateway processes online payments for this event. Super Admins can update this anytime.
+                      </p>
                     </div>
 
                     <div className="flex flex-wrap gap-6 pt-2">

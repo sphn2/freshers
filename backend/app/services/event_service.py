@@ -31,6 +31,8 @@ class EventService:
         ):
             if event.get(field) is not None:
                 event[field] = bool(event[field])
+        if "payment_gateway" in event and not event["payment_gateway"]:
+            event["payment_gateway"] = "DEFAULT"
         return event
 
     @staticmethod
@@ -97,6 +99,7 @@ class EventService:
 
         # Use status from the create payload (DRAFT or PUBLISHED)
         event_status = getattr(data, 'status', 'DRAFT') or 'DRAFT'
+        payment_gateway = getattr(data, 'payment_gateway', 'DEFAULT') or 'DEFAULT'
 
         db.execute_write(
             """INSERT INTO events (
@@ -104,14 +107,14 @@ class EventService:
                 start_time, end_time, registration_start, registration_end, capacity,
                 ticket_price, first_year_ticket_price, second_year_ticket_price, other_ticket_price,
                 allow_online, allow_offline, allow_autofill,
-                registration_open, gate_validation_enabled, food_validation_enabled, status,
+                registration_open, gate_validation_enabled, food_validation_enabled, payment_gateway, status,
                 created_by, created_at, updated_at
             ) VALUES (
                 %s, %s, %s, %s, %s, %s, %s, %s,
                 %s, %s, %s, %s, %s,
                 %s, %s, %s, %s,
                 %s::boolean, %s::boolean, %s::boolean,
-                %s::boolean, %s::boolean, %s::boolean, %s, %s, %s, %s
+                %s::boolean, %s::boolean, %s::boolean, %s, %s, %s, %s, %s
             )""",
             (
                 event_id, data.title, clean_slug, data.description, data.event_type,
@@ -123,7 +126,7 @@ class EventService:
                 bool(data.allow_online), bool(data.allow_offline), bool(data.allow_autofill),
                 data.registration_open,
                 bool(data.gate_validation_enabled), bool(data.food_validation_enabled),
-                event_status, created_by_user_id, now, now
+                payment_gateway, event_status, created_by_user_id, now, now
             )
         )
         

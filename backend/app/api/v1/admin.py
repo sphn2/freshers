@@ -602,6 +602,37 @@ def manage_convenience_fee_settings():
         except Exception:
             return internal_error("updating convenience fee settings")
 
+@admin_bp.route("/settings/payment-gateways", methods=["GET", "PUT"])
+@require_roles("SUPER_ADMIN")
+def manage_payment_gateways_settings():
+    if request.method == "GET":
+        try:
+            settings = system_settings_service.get_payment_gateway_settings()
+            return jsonify(settings), 200
+        except Exception:
+            return internal_error("fetching payment gateway settings")
+    elif request.method == "PUT":
+        try:
+            body = request.get_json() or {}
+            default_gateway = body.get("default_gateway")
+            gateways_enabled = body.get("gateways_enabled")
+            roles = getattr(g, "user_roles", [])
+            updated = system_settings_service.update_payment_gateway_settings(
+                default_gateway=default_gateway,
+                gateways_enabled=gateways_enabled,
+                roles=roles,
+            )
+            return jsonify({
+                "message": "Payment gateway settings updated successfully.",
+                "settings": updated,
+            }), 200
+        except PermissionError as e:
+            return jsonify({"error": str(e)}), 403
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        except Exception:
+            return internal_error("updating payment gateway settings")
+
 from app.services.student_directory_service import student_directory_service
 import io
 

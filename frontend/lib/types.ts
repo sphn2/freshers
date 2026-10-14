@@ -31,6 +31,7 @@ export interface Event {
   registration_open: boolean | null;
   gate_validation_enabled: boolean;
   food_validation_enabled: boolean;
+  payment_gateway?: "DEFAULT" | "RAZORPAY" | "CASHFREE" | "PHONEPE" | string;
   status: EventStatus;
 }
 
@@ -119,13 +120,17 @@ export interface AutoFillResult {
 }
 
 export interface PaymentOrder {
+  gateway?: "RAZORPAY" | "CASHFREE" | "PHONEPE" | string;
   order_id: string;
   amount: number;
   ticket_price?: number;
   convenience_fee?: number;
   convenience_fee_enabled?: boolean;
   currency: string;
-  key_id: string;
+  key_id?: string;
+  payment_session_id?: string;
+  redirect_url?: string;
+  environment?: string;
   registration_id: string;
   already_paid?: boolean;
   ticket_id?: string | null;
@@ -136,6 +141,18 @@ export interface PaymentVerification {
   registration_id: string;
   ticket_id: string;
   ticket_code: string;
+}
+
+export interface PaymentGatewayItem {
+  name: string;
+  enabled: boolean;
+  configured: boolean;
+  env?: string;
+}
+
+export interface PaymentGatewaySettings {
+  default_gateway: "RAZORPAY" | "CASHFREE" | "PHONEPE" | string;
+  gateways: Record<string, PaymentGatewayItem>;
 }
 
 export interface Ticket {
@@ -254,6 +271,7 @@ export interface EventCreateInput {
   registration_open?: boolean | null;
   gate_validation_enabled: boolean;
   food_validation_enabled: boolean;
+  payment_gateway?: string;
   status: EventStatus;
 }
 

@@ -38,9 +38,15 @@ def create_order():
     try:
         auth_middleware()
         data = CreateOrderRequest(**(request.get_json() or {}))
-        if not _can_access_registration(data.registration_id, data.registration_token):
+        candidate_token = (
+            data.registration_token
+            or request.headers.get("X-Registration-Token")
+            or request.args.get("token")
+            or request.args.get("access_token")
+        )
+        if not _can_access_registration(data.registration_id, candidate_token):
             return jsonify({"error": "Forbidden. You cannot pay for this registration."}), 403
-        res = payment_service.create_order(data.registration_id)
+        res = payment_service.create_order(data.registration_id, registration_token=candidate_token)
         return jsonify(res), 200
     except ValidationError as e:
         return jsonify({"error": format_validation_error(e), "details": e.errors()}), 422
@@ -55,13 +61,23 @@ def verify_payment():
     try:
         auth_middleware()
         data = VerifyPaymentRequest(**(request.get_json() or {}))
-        if not _can_access_registration(data.registration_id, data.registration_token):
+        candidate_token = (
+            data.registration_token
+            or request.headers.get("X-Registration-Token")
+            or request.args.get("token")
+            or request.args.get("access_token")
+        )
+        if not _can_access_registration(data.registration_id, candidate_token):
             return jsonify({"error": "Forbidden. You cannot verify this registration."}), 403
         res = payment_service.verify_payment(
             registration_id=data.registration_id,
             razorpay_order_id=data.razorpay_order_id,
             razorpay_payment_id=data.razorpay_payment_id,
-            razorpay_signature=data.razorpay_signature
+            razorpay_signature=data.razorpay_signature,
+            order_id=data.order_id,
+            payment_id=data.payment_id,
+            signature=data.signature,
+            gateway=data.gateway,
         )
         return jsonify(res), 200
     except ValidationError as e:
