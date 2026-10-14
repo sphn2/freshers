@@ -6,7 +6,7 @@ import { api } from "@/lib/api";
 import { errorMessage } from "@/lib/types";
 import type { Event } from "@/lib/types";
 import { registrationAvailability } from "@/lib/registration";
-import { ArrowLeft, ArrowRight, CalendarDays, Check, CircleAlert, Clock, ExternalLink, MapPin, ShieldCheck, Ticket, UserRoundCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight, CalendarDays, Check, CheckCircle2, CircleAlert, Clock, ExternalLink, Lock, MapPin, RefreshCw, ShieldCheck, Ticket, UserRoundCheck } from "lucide-react";
 import Link from "next/link";
 import RulesModal from "@/components/RulesModal";
 
@@ -25,6 +25,8 @@ export default function EventRegistrationPage() {
   const [department, setDepartment] = useState("CSE");
   const [showRulesModal, setShowRulesModal] = useState(false);
   const [acceptedPrivacy, setAcceptedPrivacy] = useState(false);
+  const [autofillStatus, setAutofillStatus] = useState<"idle" | "searching" | "verified" | "not_found">("idle");
+  const [autofillError, setAutofillError] = useState<string | null>(null);
   const college = "Sphoorthy Engineering College";
 
   useEffect(() => {
@@ -54,6 +56,45 @@ export default function EventRegistrationPage() {
       document.head.appendChild(script);
     }
   }, []);
+
+  // Autofill student data from directory when roll number changes
+  useEffect(() => {
+    if (!event || !event.allow_autofill) return;
+
+    const trimmed = rollNumber.trim().toUpperCase();
+    if (trimmed.length < 5) {
+      setAutofillStatus("idle");
+      setAutofillError(null);
+      setFullName("");
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setAutofillStatus("searching");
+      setAutofillError(null);
+      try {
+        const res = await api.autofillStudent(event.id, trimmed);
+        if (res.found && res.full_name) {
+          setFullName(res.full_name);
+          if (res.department) setDepartment(res.department);
+          if (res.phone && !phone) setPhone(res.phone);
+          if (res.email && !email) setEmail(res.email);
+          setAutofillStatus("verified");
+          setAutofillError(null);
+        } else {
+          setFullName("");
+          setAutofillStatus("not_found");
+          setAutofillError(res.message || "Roll number not found in verified student directory.");
+        }
+      } catch (err: unknown) {
+        setFullName("");
+        setAutofillStatus("not_found");
+        setAutofillError(errorMessage(err, "Roll number not found in approved college directory."));
+      }
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [rollNumber, event?.id, event?.allow_autofill]);
 
   // Step 1: When student clicks Form Submit, trigger the Rules Modal
   const handleFormSubmit = (formEvent: React.FormEvent) => {
@@ -230,8 +271,48 @@ export default function EventRegistrationPage() {
               {error && <div role="alert" className="flex items-center gap-2 border border-rose-300 bg-rose-50 p-3 text-xs font-semibold text-rose-800"><CircleAlert className="h-4 w-4 shrink-0" />{error}</div>}
               {notice && <div role="status" className="border border-emerald-300 bg-emerald-50 p-3 text-xs font-semibold text-emerald-800">{notice}</div>}
               <div>
-                <label htmlFor="roll-number" className="field-label">College roll number</label>
-                <input id="roll-number" className="field-control font-mono uppercase" autoComplete="off" required value={rollNumber} onChange={(e) => setRollNumber(e.target.value.toUpperCase())} placeholder="26... (first year) or 25... (second year)" />
+                <div className="flex items-center justify-between">
+                  <label htmlFor="roll-number" className="field-label">College roll number</label>
+                  {event.allow_autofill && (
+                    <span className="text-[10px] font-bold text-pink-700 uppercase tracking-wider">
+                      Auto-Verifies Identity
+                    </span>
+                  )}
+                </div>
+                <input
+                  id="roll-number"
+                  className="field-control font-mono uppercase"
+                  autoComplete="off"
+                  required
+                  value={rollNumber}
+                  onChange={(e) => setRollNumber(e.target.value.toUpperCase())}
+                  placeholder="26... (first year) or 25... (second year)"
+                />
+
+                {/* Directory verification status indicators */}
+                {event.allow_autofill && rollNumber.trim().length >= 5 && (
+                  <div className="mt-2">
+                    {autofillStatus === "searching" && (
+                      <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin text-pink-600 shrink-0" />
+                        <span>Searching college directory records…</span>
+                      </div>
+                    )}
+                    {autofillStatus === "verified" && (
+                      <div className="flex items-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50/90 px-3 py-2 text-xs font-semibold text-emerald-800">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                        <span>Verified student: <strong>{fullName}</strong> ({department}) · Locked for ticket accuracy</span>
+                      </div>
+                    )}
+                    {autofillStatus === "not_found" && (
+                      <div role="alert" className="flex items-center gap-2 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-800">
+                        <CircleAlert className="h-4 w-4 text-rose-600 shrink-0" />
+                        <span>{autofillError || "Roll number not found in student directory. Only approved students can register."}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {rollNumber && ticketPrice === null && (
                   <p role="alert" className="mt-2 text-xs font-semibold text-rose-700">
                     This roll-number prefix has no configured fee. Contact event staff to confirm eligibility.
@@ -243,19 +324,109 @@ export default function EventRegistrationPage() {
                   </p>
                 )}
               </div>
+
               <div className="grid gap-4 sm:grid-cols-2">
-                <div><label htmlFor="full-name" className="field-label">Full name</label><input id="full-name" className="field-control" autoComplete="name" required value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="As on your student ID" /></div>
-                <div><label htmlFor="email" className="field-label">Your Mail</label><input id="email" type="email" className="field-control" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@gmail.com" /></div>
-                <div><label htmlFor="phone" className="field-label">Mobile number</label><input id="phone" type="tel" className="field-control" autoComplete="tel" required value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="10-digit mobile number" /></div>
-                <div><label htmlFor="department" className="field-label">Department</label><select id="department" className="field-control" value={department} onChange={(e) => setDepartment(e.target.value)}>
-                  <option value="CSE">CSE</option>
-                  <option value="ECE">ECE</option>
-                  <option value="CSE-CS">CSE-CS</option>
-                  <option value="CSE - AIML">CSE - AIML</option>
-                  <option value="CSE - DS">CSE - DS</option>
-                  <option value="CIVIL">CIVIL</option>
-                </select></div>
-                <div className="sm:col-span-2"><label htmlFor="college" className="field-label">Institution</label><input id="college" className="field-control !bg-slate-100" readOnly value={college} /></div>
+                <div>
+                  <div className="flex items-center justify-between">
+                    <label htmlFor="full-name" className="field-label">Full name</label>
+                    {event.allow_autofill && (
+                      <span className="text-[10px] font-bold text-slate-500 inline-flex items-center gap-1">
+                        <Lock className="h-3 w-3 text-slate-400" /> Auto-filled
+                      </span>
+                    )}
+                  </div>
+                  {event.allow_autofill ? (
+                    <input
+                      id="full-name"
+                      className="field-control !bg-slate-100 !text-slate-800 font-semibold cursor-not-allowed border-slate-200"
+                      readOnly
+                      tabIndex={-1}
+                      value={fullName}
+                      placeholder={autofillStatus === "searching" ? "Searching directory…" : "Auto-filled from roll number"}
+                    />
+                  ) : (
+                    <input
+                      id="full-name"
+                      className="field-control"
+                      autoComplete="name"
+                      required
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      placeholder="As on your student ID"
+                    />
+                  )}
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between">
+                    <label htmlFor="email" className="field-label">Your Mail</label>
+                    <span className="text-[10px] font-semibold text-pink-700">Receives ticket</span>
+                  </div>
+                  <input
+                    id="email"
+                    type="email"
+                    className="field-control"
+                    autoComplete="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@gmail.com"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="phone" className="field-label">Mobile number</label>
+                  <input
+                    id="phone"
+                    type="tel"
+                    className="field-control"
+                    autoComplete="tel"
+                    required
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="10-digit mobile number"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between">
+                    <label htmlFor="department" className="field-label">Department</label>
+                    {event.allow_autofill && (
+                      <span className="text-[10px] font-bold text-slate-500 inline-flex items-center gap-1">
+                        <Lock className="h-3 w-3 text-slate-400" /> Auto-filled
+                      </span>
+                    )}
+                  </div>
+                  {event.allow_autofill ? (
+                    <input
+                      id="department"
+                      className="field-control !bg-slate-100 !text-slate-800 font-semibold cursor-not-allowed border-slate-200"
+                      readOnly
+                      tabIndex={-1}
+                      value={department}
+                      placeholder="Auto-filled"
+                    />
+                  ) : (
+                    <select
+                      id="department"
+                      className="field-control"
+                      value={department}
+                      onChange={(e) => setDepartment(e.target.value)}
+                    >
+                      <option value="CSE">CSE</option>
+                      <option value="ECE">ECE</option>
+                      <option value="CSE-CS">CSE-CS</option>
+                      <option value="CSE - AIML">CSE - AIML</option>
+                      <option value="CSE - DS">CSE - DS</option>
+                      <option value="CIVIL">CIVIL</option>
+                    </select>
+                  )}
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label htmlFor="college" className="field-label">Institution</label>
+                  <input id="college" className="field-control !bg-slate-100 font-medium" readOnly value={college} />
+                </div>
               </div>
 
               <div className="rounded-xl border border-slate-200 bg-slate-50/90 p-3.5 shadow-sm">
@@ -278,8 +449,27 @@ export default function EventRegistrationPage() {
                 </label>
               </div>
 
-              <button type="submit" disabled={submitting || ticketPrice === null || !acceptedPrivacy} className="button-primary button-accent mt-2 w-full !min-h-[52px] disabled:cursor-not-allowed disabled:opacity-50">
-                <ShieldCheck className="h-4 w-4" />{submitting ? "Securing your registration…" : `Continue · ${ticketPrice === null ? "Select an eligible roll number" : ticketPrice > 0 ? `₹${ticketPrice}` : "Free admission"}`}<ArrowRight className="h-4 w-4" />
+              <button
+                type="submit"
+                disabled={
+                  submitting ||
+                  ticketPrice === null ||
+                  !acceptedPrivacy ||
+                  (event.allow_autofill && autofillStatus !== "verified")
+                }
+                className="button-primary button-accent mt-2 w-full !min-h-[52px] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <ShieldCheck className="h-4 w-4" />
+                {submitting
+                  ? "Securing your registration…"
+                  : event.allow_autofill && autofillStatus === "searching"
+                    ? "Verifying college directory…"
+                    : event.allow_autofill && autofillStatus === "not_found"
+                      ? "Enter a valid directory roll number"
+                      : event.allow_autofill && autofillStatus === "idle"
+                        ? "Enter roll number to auto-fill details"
+                        : `Continue · ${ticketPrice === null ? "Select an eligible roll number" : ticketPrice > 0 ? `₹${ticketPrice}` : "Free admission"}`}
+                <ArrowRight className="h-4 w-4" />
               </button>
               <p className="text-center text-[10px] leading-5 text-slate-500">Your information is used to create and verify your event ticket.</p>
             </form>

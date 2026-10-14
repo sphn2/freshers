@@ -15,8 +15,16 @@ import type {
   RegistrationInput,
   ReportRow,
   StudentDirectoryRecord,
+  StudentDirectoryEntry,
+  DirectoryUploadResponse,
+  DirectoryListResponse,
+  DirectoryStatsResponse,
+  AutoFillResult,
   Ticket,
   ValidationResult,
+  DailyRevenueReport,
+  CollectorDailyRow,
+  Settlement,
 } from "@/lib/types";
 
 export async function apiFetch<T>(
@@ -89,7 +97,7 @@ export const api = {
   getEventBySlug: (slug: string) =>
     apiFetch<Event>(`/events/${encodeURIComponent(slug)}`),
   autofillStudent: (eventId: string, rollNumber: string) =>
-    apiFetch<StudentDirectoryRecord>(
+    apiFetch<AutoFillResult>(
       `/events/${encodeURIComponent(eventId)}/autofill/${encodeURIComponent(rollNumber)}`,
     ),
 
@@ -312,6 +320,126 @@ export const api = {
       "/admin/settings/convenience-fee",
       {
         method: "PUT",
+        body: JSON.stringify(payload),
+      },
+    ),
+  uploadStudentDirectory: async (file: File): Promise<DirectoryUploadResponse> => {
+    const { data: sessionData } = supabase
+      ? await supabase.auth.getSession()
+      : { data: { session: null } };
+    const headers = new Headers();
+    if (sessionData.session?.access_token) {
+      headers.set("Authorization", `Bearer ${sessionData.session.access_token}`);
+    }
+    const formData = new FormData();
+    formData.append("file", file);
+    const response = await fetch(`${getApiBaseUrl()}/admin/student-directory/upload`, {
+      method: "POST",
+      headers,
+      body: formData,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.error || `Upload failed with status ${response.status}`);
+    }
+    return data;
+  },
+  getStudentDirectory: (params?: { search?: string; department?: string; page?: number; limit?: number }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set("search", params.search);
+    if (params?.department) searchParams.set("department", params.department);
+    if (params?.page) searchParams.set("page", params.page.toString());
+    if (params?.limit) searchParams.set("limit", params.limit.toString());
+    const query = searchParams.toString() ? `?${searchParams.toString()}` : "";
+    return apiFetch<DirectoryListResponse>(`/admin/student-directory${query}`);
+  },
+  getStudentDirectoryStats: () =>
+    apiFetch<DirectoryStatsResponse>("/admin/student-directory/stats"),
+  deleteStudentDirectoryRecord: (studentId: string) =>
+    apiFetch<{ message: string }>(`/admin/student-directory/${encodeURIComponent(studentId)}`, {
+      method: "DELETE",
+    }),
+  clearStudentDirectory: () =>
+    apiFetch<{ message: string; cleared: number }>("/admin/student-directory", {
+      method: "DELETE",
+    }),
+  downloadStudentDirectoryTemplate: async (): Promise<Blob> => {
+    const { data: sessionData } = supabase
+      ? await supabase.auth.getSession()
+      : { data: { session: null } };
+    const headers = new Headers();
+    if (sessionData.session?.access_token) {
+      headers.set("Authorization", `Bearer ${sessionData.session.access_token}`);
+    }
+    const response = await fetch(`${getApiBaseUrl()}/admin/student-directory/template`, {
+      headers,
+    });
+    if (!response.ok) {
+      throw new Error("Failed to download directory template");
+    }
+    return response.blob();
+  },
+  toggleEventAutofill: (eventId: string, allowAutofill: boolean) =>
+    apiFetch<{ message: string; allow_autofill: boolean; event_id: string }>(
+      `/admin/events/${encodeURIComponent(eventId)}/toggle-autofill`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ allow_autofill: allowAutofill }),
+      },
+    ),
+
+  // ─── Financial Reporting ──────────────────────────────────────────────────
+  getDailyRevenueReport: (eventId: string, dateFrom?: string, dateTo?: string) => {
+    const params = new URLSearchParams({ event_id: eventId });
+    if (dateFrom) params.set("date_from", dateFrom);
+    if (dateTo) params.set("date_to", dateTo);
+    return apiFetch<DailyRevenueReport>(`/admin/reports/daily-revenue?${params.toString()}`);
+  },
+
+  getDailyCollectorsReport: (eventId: string, date?: string) => {
+    const params = new URLSearchParams({ event_id: eventId });
+    if (date) params.set("date", date);
+    return apiFetch<{ collectors: CollectorDailyRow[] }>(`/admin/reports/daily-collectors?${params.toString()}`);
+  },
+
+  // ─── Settlements ──────────────────────────────────────────────────────────
+  getSettlements: (eventId?: string) => {
+    const params = eventId ? `?event_id=${encodeURIComponent(eventId)}` : "";
+    return apiFetch<{ settlements: Settlement[] }>(`/admin/settlements${params}`);
+  },
+
+  createSettlement: (payload: {
+    event_id?: string | null;
+    settlement_date: string;
+    total_online_amount: number;
+    total_cash_amount: number;
+    total_tickets_issued: number;
+  }) =>
+    apiFetch<{ message: string; settlement: Settlement }>("/admin/settlements", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  getSettlement: (settlementId: string) =>
+    apiFetch<{ settlement: Settlement }>(`/admin/settlements/${encodeURIComponent(settlementId)}`),
+
+  markSettlementSettled: (
+    settlementId: string,
+    payload: {
+      receiver_name: string;
+      bank_name: string;
+      account_number: string;
+      ifsc_code: string;
+      transaction_id: string;
+      transaction_date?: string;
+      notes?: string;
+      authorized_by_name?: string;
+    },
+  ) =>
+    apiFetch<{ message: string; settlement: Settlement }>(
+      `/admin/settlements/${encodeURIComponent(settlementId)}/settle`,
+      {
+        method: "PATCH",
         body: JSON.stringify(payload),
       },
     ),

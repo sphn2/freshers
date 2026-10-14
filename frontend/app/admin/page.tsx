@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { api } from "@/lib/api";
 import { ProtectedRoute, useAuth } from "@/lib/auth";
 import { errorMessage } from "@/lib/types";
@@ -13,12 +13,20 @@ import type {
   EventStatus,
   ReportRow,
   StaffAccount,
+  StudentDirectoryEntry,
+  DirectoryUploadResponse,
+  DirectoryStatsResponse,
+  DailyRevenueReport,
+  CollectorDailyRow,
+  Settlement,
 } from "@/lib/types";
 import {
   LayoutDashboard, ShieldCheck, DollarSign, Users, Ticket, Activity,
   FileSpreadsheet, Plus, RefreshCw, CheckCircle2, QrCode,
   CreditCard, Banknote, Settings, AlertCircle, Pause, Play, CalendarClock,
-  UserRoundPlus, KeyRound, Mail, Edit3, Search, X
+  UserRoundPlus, KeyRound, Mail, Edit3, Search, X,
+  Database, UploadCloud, Download, Trash2, Lock, FileUp,
+  TrendingUp, BarChart3, Receipt, Printer, CheckSquare, Building2
 } from "lucide-react";
 
 export default function AdminDashboardPage() {
@@ -29,7 +37,7 @@ export default function AdminDashboardPage() {
   );
 }
 
-type Tab = "overview" | "registrations" | "payments" | "entries" | "offline" | "audit" | "events" | "accounts";
+type Tab = "overview" | "registrations" | "payments" | "entries" | "offline" | "audit" | "events" | "accounts" | "directory" | "daily-report" | "settlements";
 
 function AdminDashboardContent() {
   const { role, user, refreshUser } = useAuth();
@@ -97,6 +105,56 @@ function AdminDashboardContent() {
   const [feeAmountDraft, setFeeAmountDraft] = useState<string>("3.79");
   const [feeEnabledDraft, setFeeEnabledDraft] = useState<boolean>(true);
   const [savingFeeSettings, setSavingFeeSettings] = useState<boolean>(false);
+
+  // Student Directory state
+  const [directoryStudents, setDirectoryStudents] = useState<StudentDirectoryEntry[]>([]);
+  const [directoryTotal, setDirectoryTotal] = useState(0);
+  const [directoryPage, setDirectoryPage] = useState(1);
+  const [directoryTotalPages, setDirectoryTotalPages] = useState(1);
+  const [directorySearch, setDirectorySearch] = useState("");
+  const [directoryDeptFilter, setDirectoryDeptFilter] = useState("");
+  const [directoryLoading, setDirectoryLoading] = useState(false);
+  const [directoryStats, setDirectoryStats] = useState<DirectoryStatsResponse | null>(null);
+  const [directoryUploadFile, setDirectoryUploadFile] = useState<File | null>(null);
+  const [directoryUploading, setDirectoryUploading] = useState(false);
+  const [directoryUploadResult, setDirectoryUploadResult] = useState<DirectoryUploadResponse | null>(null);
+  const [showClearDirectoryModal, setShowClearDirectoryModal] = useState(false);
+  const [clearingDirectory, setClearingDirectory] = useState(false);
+
+  // Daily Revenue Report state
+  const [dailyRevenue, setDailyRevenue] = useState<DailyRevenueReport | null>(null);
+  const [dailyCollectors, setDailyCollectors] = useState<CollectorDailyRow[]>([]);
+  const [dailyReportLoading, setDailyReportLoading] = useState(false);
+  const [collectorDateFilter, setCollectorDateFilter] = useState("");
+  const [dailyChannel, setDailyChannel] = useState<"ONLINE" | "CASH">("ONLINE");
+
+  // Settlements state
+  const [settlements, setSettlements] = useState<Settlement[]>([]);
+  const [settlementsLoading, setSettlementsLoading] = useState(false);
+  const [showSettleModal, setShowSettleModal] = useState(false);
+  const [settlingId, setSettlingId] = useState<string | null>(null);
+  const [settlementForm, setSettlementForm] = useState({
+    receiver_name: "",
+    bank_name: "",
+    account_number: "",
+    ifsc_code: "",
+    transaction_id: "",
+    transaction_date: "",
+    notes: "",
+    authorized_by_name: "",
+  });
+  const [submittingSettle, setSubmittingSettle] = useState(false);
+  const [receiptSettlement, setReceiptSettlement] = useState<Settlement | null>(null);
+  const [showCreateSettlementModal, setShowCreateSettlementModal] = useState(false);
+  const [newSettlementForm, setNewSettlementForm] = useState({
+    event_id: "",
+    settlement_date: new Date().toISOString().slice(0, 10),
+    total_online_amount: 0,
+    total_cash_amount: 0,
+    total_tickets_issued: 0,
+  });
+  const [creatingSettlement, setCreatingSettlement] = useState(false);
+  const receiptRef = useRef<HTMLDivElement>(null);
 
   const loadFeeSettings = async () => {
     if (!isSuperAdmin) return;
@@ -300,6 +358,78 @@ function AdminDashboardContent() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadDailyReport = async (eid = selectedEventId) => {
+    if (!eid) return;
+    setDailyReportLoading(true);
+    try {
+      const [revenueData, collectorsData] = await Promise.all([
+        api.getDailyRevenueReport(eid),
+        api.getDailyCollectorsReport(eid, collectorDateFilter || undefined),
+      ]);
+      setDailyRevenue(revenueData);
+      setDailyCollectors(collectorsData.collectors);
+    } catch (err: unknown) {
+      setStatusMsg(`❌ ${errorMessage(err, "Failed loading daily report.")}`);
+    } finally {
+      setDailyReportLoading(false);
+    }
+  };
+
+  const loadSettlements = async (eid = selectedEventId) => {
+    setSettlementsLoading(true);
+    try {
+      const data = await api.getSettlements(eid || undefined);
+      setSettlements(data.settlements);
+    } catch (err: unknown) {
+      setStatusMsg(`❌ ${errorMessage(err, "Failed loading settlements.")}`);
+    } finally {
+      setSettlementsLoading(false);
+    }
+  };
+
+  const handleCreateSettlement = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCreatingSettlement(true);
+    try {
+      const res = await api.createSettlement({
+        event_id: newSettlementForm.event_id || null,
+        settlement_date: newSettlementForm.settlement_date,
+        total_online_amount: Number(newSettlementForm.total_online_amount),
+        total_cash_amount: Number(newSettlementForm.total_cash_amount),
+        total_tickets_issued: Number(newSettlementForm.total_tickets_issued),
+      });
+      setStatusMsg(`✅ ${res.message}`);
+      setShowCreateSettlementModal(false);
+      void loadSettlements();
+    } catch (err: unknown) {
+      setStatusMsg(`❌ ${errorMessage(err, "Failed creating settlement record.")}`);
+    } finally {
+      setCreatingSettlement(false);
+    }
+  };
+
+  const handleMarkSettled = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!settlingId) return;
+    setSubmittingSettle(true);
+    try {
+      const res = await api.markSettlementSettled(settlingId, settlementForm);
+      setStatusMsg(`✅ ${res.message}`);
+      setShowSettleModal(false);
+      setSettlingId(null);
+      setReceiptSettlement(res.settlement);
+      void loadSettlements();
+    } catch (err: unknown) {
+      setStatusMsg(`❌ ${errorMessage(err, "Failed marking settlement as settled.")}`);
+    } finally {
+      setSubmittingSettle(false);
+    }
+  };
+
+  const handlePrintReceipt = () => {
+    window.print();
   };
 
   const loadEvents = async () => {
@@ -544,19 +674,115 @@ function AdminDashboardContent() {
     }
   };
 
+  const loadDirectoryData = async (page = 1, search = directorySearch, dept = directoryDeptFilter) => {
+    setDirectoryLoading(true);
+    try {
+      const [listRes, statsRes] = await Promise.all([
+        api.getStudentDirectory({ page, limit: 50, search: search || undefined, department: dept || undefined }),
+        api.getStudentDirectoryStats(),
+      ]);
+      setDirectoryStudents(listRes.students);
+      setDirectoryTotal(listRes.total);
+      setDirectoryPage(listRes.page);
+      setDirectoryTotalPages(listRes.total_pages);
+      setDirectoryStats(statsRes);
+    } catch (err: unknown) {
+      setStatusMsg(`❌ ${errorMessage(err, "Failed loading student directory.")}`);
+    } finally {
+      setDirectoryLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "directory") {
+      void loadDirectoryData(1, directorySearch, directoryDeptFilter);
+    }
+  }, [activeTab, directorySearch, directoryDeptFilter]);
+
+  const handleUploadDirectory = async () => {
+    if (!directoryUploadFile) return;
+    setDirectoryUploading(true);
+    setDirectoryUploadResult(null);
+    try {
+      const res = await api.uploadStudentDirectory(directoryUploadFile);
+      setDirectoryUploadResult(res);
+      setStatusMsg(`✅ ${res.message}`);
+      setDirectoryUploadFile(null);
+      void loadDirectoryData(1);
+    } catch (err: unknown) {
+      setStatusMsg(`❌ ${errorMessage(err, "Failed uploading directory file.")}`);
+    } finally {
+      setDirectoryUploading(false);
+    }
+  };
+
+  const handleDownloadTemplate = async () => {
+    try {
+      const blob = await api.downloadStudentDirectoryTemplate();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "student_directory_template.csv";
+      a.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err: unknown) {
+      setStatusMsg(`❌ ${errorMessage(err, "Failed downloading directory template.")}`);
+    }
+  };
+
+  const handleClearDirectory = async () => {
+    setClearingDirectory(true);
+    try {
+      const res = await api.clearStudentDirectory();
+      setStatusMsg(`✅ ${res.message}`);
+      setShowClearDirectoryModal(false);
+      void loadDirectoryData(1);
+    } catch (err: unknown) {
+      setStatusMsg(`❌ ${errorMessage(err, "Failed clearing student directory.")}`);
+    } finally {
+      setClearingDirectory(false);
+    }
+  };
+
+  const handleDeleteDirectoryRecord = async (id: string, name: string) => {
+    if (!confirm(`Are you sure you want to remove "${name}" from the student directory?`)) return;
+    try {
+      const res = await api.deleteStudentDirectoryRecord(id);
+      setStatusMsg(`✅ ${res.message}`);
+      void loadDirectoryData(directoryPage);
+    } catch (err: unknown) {
+      setStatusMsg(`❌ ${errorMessage(err, "Failed deleting record.")}`);
+    }
+  };
+
+  const handleToggleEventAutofill = async (eventId: string, currentVal: boolean) => {
+    try {
+      const res = await api.toggleEventAutofill(eventId, !currentVal);
+      setStatusMsg(`✅ ${res.message}`);
+      setEvents((prev) =>
+        prev.map((ev) => (ev.id === eventId ? { ...ev, allow_autofill: res.allow_autofill } : ev))
+      );
+    } catch (err: unknown) {
+      setStatusMsg(`❌ ${errorMessage(err, "Failed toggling event autofill.")}`);
+    }
+  };
+
   const tabs: { key: Tab; label: string; icon: React.ReactNode; color: string }[] = [
     { key: "overview", label: "Overview", icon: <LayoutDashboard className="w-4 h-4" />, color: "text-pink-600" },
     { key: "events", label: "Events", icon: <Settings className="w-4 h-4" />, color: "text-blue-600" },
     { key: "accounts", label: "Staff accounts", icon: <UserRoundPlus className="w-4 h-4" />, color: "text-blue-700" },
+    { key: "directory", label: "Student Directory", icon: <Database className="w-4 h-4" />, color: "text-indigo-600" },
     { key: "registrations", label: "Registrations", icon: <Users className="w-4 h-4" />, color: "text-slate-700" },
     { key: "payments", label: "Payments", icon: <CreditCard className="w-4 h-4" />, color: "text-emerald-600" },
     { key: "entries", label: "Gate Entries", icon: <QrCode className="w-4 h-4" />, color: "text-blue-600" },
     { key: "offline", label: "Offline Cash", icon: <Banknote className="w-4 h-4" />, color: "text-pink-600" },
+    { key: "daily-report", label: "Daily Report", icon: <BarChart3 className="w-4 h-4" />, color: "text-violet-600" },
+    { key: "settlements", label: "Settlements", icon: <Receipt className="w-4 h-4" />, color: "text-amber-600" },
     { key: "audit", label: "Audit Logs", icon: <Activity className="w-4 h-4" />, color: "text-rose-600" },
   ];
   const visibleTabs = isAdmin
     ? tabs
-    : tabs.filter((tab) => tab.key !== "audit" && tab.key !== "accounts" && tab.key !== "events");
+    : tabs.filter((tab) => tab.key !== "audit" && tab.key !== "accounts" && tab.key !== "events" && tab.key !== "directory");
 
   if (loading) {
     return (
@@ -1920,6 +2146,1168 @@ function AdminDashboardContent() {
                     );})}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB: Student Directory */}
+      {activeTab === "directory" && (
+        <div className="space-y-6">
+          {/* Top Info Banner */}
+          <div className="rounded-2xl border border-indigo-200 bg-gradient-to-r from-indigo-50/80 via-white to-purple-50/80 p-5 shadow-sm">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-800 text-[10px] font-bold uppercase tracking-wider mb-2">
+                  <Database className="w-3 h-3 text-indigo-700" /> Identity Anti-Spoofing & Auto-Fill Directory
+                </div>
+                <h2 className="text-xl font-bold text-slate-900">Student Directory Management</h2>
+                <p className="mt-1 text-xs text-slate-600 max-w-2xl leading-relaxed">
+                  Upload official college records via Excel (.xlsx) or CSV. When auto-fill verification is enabled on an event, students only enter their Roll No, Mobile, and Email; their official Name and Department are auto-filled and locked to avoid booking tickets on another student&apos;s name.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={handleDownloadTemplate}
+                  className="px-3.5 py-2 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 rounded-xl text-xs font-bold inline-flex items-center gap-2 shadow-sm transition"
+                >
+                  <Download className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Download Sample Template</span>
+                </button>
+                {directoryTotal > 0 && isSuperAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => setShowClearDirectoryModal(true)}
+                    className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                    <span>Clear Entire Directory</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-2 items-start">
+            {/* CARD 1: Multiple Uploads (Excel / CSV) */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+                    <FileUp className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">Upload Student Records</h3>
+                    <p className="text-[11px] text-slate-500">Supports .xlsx (Excel) and .csv formats</p>
+                  </div>
+                </div>
+                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                  Batch Upsert Enabled
+                </span>
+              </div>
+
+              <div className="rounded-xl border border-blue-200 bg-blue-50/70 p-3 text-xs text-blue-900 space-y-1">
+                <p className="font-bold flex items-center gap-1.5">
+                  <span>💡</span> Multi-batch uploads supported:
+                </p>
+                <p className="text-[11px] leading-relaxed text-blue-800">
+                  You can upload files multiple times (e.g. by year or by branch). Existing roll numbers are updated with latest info and new roll numbers are inserted automatically without duplicates.
+                </p>
+              </div>
+
+              {/* Upload Input Area */}
+              <div className="border-2 border-dashed border-slate-200 hover:border-indigo-400 rounded-xl p-5 text-center transition bg-slate-50/50">
+                <input
+                  type="file"
+                  id="directory-file-input"
+                  accept=".xlsx, .xls, .csv"
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                      setDirectoryUploadFile(e.target.files[0]);
+                      setDirectoryUploadResult(null);
+                    }
+                  }}
+                />
+                <label htmlFor="directory-file-input" className="cursor-pointer block">
+                  <UploadCloud className="w-9 h-9 mx-auto text-indigo-500 mb-2" />
+                  <p className="text-xs font-bold text-slate-800">
+                    {directoryUploadFile ? directoryUploadFile.name : "Click to select Excel (.xlsx) or CSV file"}
+                  </p>
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    {directoryUploadFile
+                      ? `${(directoryUploadFile.size / 1024).toFixed(1)} KB selected`
+                      : "Columns: Roll Number, Full Name, Department, College, Phone, Email"}
+                  </p>
+                </label>
+              </div>
+
+              {directoryUploadFile && (
+                <div className="flex items-center justify-between gap-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setDirectoryUploadFile(null)}
+                    className="text-xs text-slate-500 hover:text-slate-800 font-medium"
+                  >
+                    Remove File
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleUploadDirectory}
+                    disabled={directoryUploading}
+                    className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-2 shadow-sm transition disabled:opacity-50"
+                  >
+                    {directoryUploading ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>Processing & Merging Records…</span>
+                      </>
+                    ) : (
+                      <>
+                        <FileUp className="w-3.5 h-3.5" />
+                        <span>Upload & Merge Into Directory</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {/* Upload Result Feedback */}
+              {directoryUploadResult && (
+                <div className="rounded-xl border border-emerald-300 bg-emerald-50/90 p-3.5 text-xs text-emerald-900 space-y-2">
+                  <p className="font-bold flex items-center gap-1.5 text-emerald-800">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>{directoryUploadResult.message}</span>
+                  </p>
+                  <div className="grid grid-cols-3 gap-2 pt-1 text-center text-[11px]">
+                    <div className="p-2 rounded-lg bg-white border border-emerald-200">
+                      <p className="font-bold text-emerald-700 text-sm">{directoryUploadResult.inserted}</p>
+                      <p className="text-slate-500 text-[9px] uppercase font-bold">New Added</p>
+                    </div>
+                    <div className="p-2 rounded-lg bg-white border border-emerald-200">
+                      <p className="font-bold text-blue-700 text-sm">{directoryUploadResult.updated}</p>
+                      <p className="text-slate-500 text-[9px] uppercase font-bold">Updated</p>
+                    </div>
+                    <div className="p-2 rounded-lg bg-white border border-emerald-200">
+                      <p className="font-bold text-slate-700 text-sm">{directoryUploadResult.total_processed}</p>
+                      <p className="text-slate-500 text-[9px] uppercase font-bold">Total Processed</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* CARD 2: Event Autofill & Identity Locking Controls */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-purple-50 text-purple-600 rounded-xl">
+                    <Lock className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">Event Prefill & Anti-Proxy Controls</h3>
+                    <p className="text-[11px] text-slate-500">Toggle whether registrations require verified student records</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-purple-200 bg-purple-50/60 p-3 text-xs text-purple-950 space-y-1">
+                <p className="font-bold">🛡️ How identity locking works:</p>
+                <p className="text-[11px] leading-relaxed text-purple-900">
+                  When enabled, public registration queries this directory by roll number. The student can only enter their roll number, phone number, and email. Name and Department are auto-filled and locked, preventing anyone from booking a ticket under a fake name.
+                </p>
+              </div>
+
+              {/* Event toggle list */}
+              <div className="space-y-3 pt-1">
+                {events.map((ev) => (
+                  <div
+                    key={ev.id}
+                    className="flex items-center justify-between gap-4 p-3.5 rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-slate-50 transition"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-bold text-slate-900 truncate">{ev.title}</p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">
+                        Slug: <span className="font-mono text-slate-700">{ev.slug}</span>
+                      </p>
+                      <div className="mt-1.5 flex items-center gap-2">
+                        {ev.allow_autofill ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-md border border-emerald-300">
+                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                            Directory Prefill Enforced
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-600 bg-slate-200 px-2 py-0.5 rounded-md">
+                            Manual Entry Allowed
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void handleToggleEventAutofill(ev.id, ev.allow_autofill)}
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold border transition ${
+                        ev.allow_autofill
+                          ? "bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100"
+                          : "bg-emerald-600 text-white border-emerald-700 hover:bg-emerald-700"
+                      }`}
+                    >
+                      {ev.allow_autofill ? "Turn Off" : "Enable Lock"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* CARD 3: Directory Table & Search */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Student Directory Roster</h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Showing verified students ({directoryTotal} total records)
+                </p>
+              </div>
+
+              {/* Department pills */}
+              {directoryStats && directoryStats.departments.length > 0 && (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => setDirectoryDeptFilter("")}
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition ${
+                      !directoryDeptFilter
+                        ? "bg-indigo-600 text-white border-indigo-700"
+                        : "bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200"
+                    }`}
+                  >
+                    All ({directoryStats.total_students})
+                  </button>
+                  {directoryStats.departments.slice(0, 6).map((d) => (
+                    <button
+                      key={d.department}
+                      type="button"
+                      onClick={() => setDirectoryDeptFilter(d.department === directoryDeptFilter ? "" : d.department)}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition ${
+                        directoryDeptFilter === d.department
+                          ? "bg-indigo-600 text-white border-indigo-700"
+                          : "bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200"
+                      }`}
+                    >
+                      {d.department} ({d.count})
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Search and Filters */}
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="relative min-w-[260px] max-w-md flex-1">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={directorySearch}
+                  onChange={(e) => setDirectorySearch(e.target.value)}
+                  placeholder="Search by Roll Number, Full Name, or Branch…"
+                  className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-indigo-500 transition"
+                />
+                {directorySearch && (
+                  <button
+                    onClick={() => setDirectorySearch("")}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void loadDirectoryData(directoryPage)}
+                  className="px-3 py-2 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${directoryLoading ? "animate-spin text-indigo-600" : ""}`} />
+                  <span>Refresh</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Table */}
+            <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+              <div className="overflow-x-auto max-h-[500px]">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead className="bg-slate-50 text-[10px] font-extrabold uppercase tracking-wider text-slate-500 sticky top-0 border-b border-slate-200 z-10">
+                    <tr>
+                      <th className="px-4 py-3">Roll Number</th>
+                      <th className="px-4 py-3">Full Name</th>
+                      <th className="px-4 py-3">Branch</th>
+                      <th className="px-4 py-3">Institution</th>
+                      <th className="px-4 py-3">Mobile</th>
+                      <th className="px-4 py-3">Official Mail</th>
+                      <th className="px-4 py-3 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 bg-white">
+                    {directoryLoading ? (
+                      <tr>
+                        <td colSpan={7} className="px-4 py-12 text-center text-slate-500">
+                          <RefreshCw className="w-5 h-5 animate-spin mx-auto text-indigo-600 mb-2" />
+                          <span>Loading student records…</span>
+                        </td>
+                      </tr>
+                    ) : directoryStudents.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="px-4 py-12 text-center text-slate-500">
+                          <Database className="w-7 h-7 mx-auto text-slate-400 mb-2" />
+                          <p className="font-bold text-slate-700">No student records found</p>
+                          <p className="text-xs text-slate-400 mt-1">
+                            {directorySearch
+                              ? "No students match your search criteria."
+                              : "Upload an Excel (.xlsx) or CSV file above to populate the directory."}
+                          </p>
+                        </td>
+                      </tr>
+                    ) : (
+                      directoryStudents.map((st) => (
+                        <tr key={st.id} className="hover:bg-slate-50/80 transition">
+                          <td className="px-4 py-3 font-mono font-bold text-indigo-700">
+                            {st.roll_number}
+                          </td>
+                          <td className="px-4 py-3 font-semibold text-slate-900">
+                            {st.full_name}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                              {st.department}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-slate-600 truncate max-w-[180px]">
+                            {st.college_name || "Sphoorthy Engineering College"}
+                          </td>
+                          <td className="px-4 py-3 text-slate-600 font-mono text-[11px]">
+                            {st.phone || "—"}
+                          </td>
+                          <td className="px-4 py-3 text-slate-600 text-[11px] truncate max-w-[180px]">
+                            {st.email || "—"}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <button
+                              type="button"
+                              onClick={() => void handleDeleteDirectoryRecord(st.id, st.full_name)}
+                              className="p-1.5 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition"
+                              title="Delete record"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Pagination Controls */}
+            {directoryTotalPages > 1 && (
+              <div className="flex items-center justify-between gap-4 pt-2">
+                <p className="text-xs text-slate-500">
+                  Page <span className="font-bold text-slate-800">{directoryPage}</span> of{" "}
+                  <span className="font-bold text-slate-800">{directoryTotalPages}</span> ({directoryTotal} students)
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={directoryPage <= 1}
+                    onClick={() => void loadDirectoryData(directoryPage - 1)}
+                    className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                  >
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    disabled={directoryPage >= directoryTotalPages}
+                    onClick={() => void loadDirectoryData(directoryPage + 1)}
+                    className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Modal: Clear Directory Confirmation */}
+          {showClearDirectoryModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+              <div className="w-full max-w-md bg-white rounded-2xl p-6 shadow-2xl border border-rose-200 space-y-4">
+                <div className="flex items-center gap-3 text-rose-600">
+                  <div className="p-2 bg-rose-100 rounded-xl">
+                    <Trash2 className="w-6 h-6 text-rose-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900">Clear Student Directory?</h3>
+                    <p className="text-xs text-slate-500">Irreversible operation</p>
+                  </div>
+                </div>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  This will remove all <strong>{directoryTotal}</strong> student records from the database. Event registrations will no longer be able to auto-verify against this directory until a new roster is uploaded.
+                </p>
+                <div className="flex gap-2 pt-2 justify-end">
+                  <button
+                    type="button"
+                    disabled={clearingDirectory}
+                    onClick={() => setShowClearDirectoryModal(false)}
+                    className="px-4 py-2 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-100 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={clearingDirectory}
+                    onClick={handleClearDirectory}
+                    className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition disabled:opacity-50"
+                  >
+                    {clearingDirectory ? "Clearing Directory…" : "Yes, Delete All Records"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+      {/* TAB: Daily Report */}
+      {activeTab === "daily-report" && (
+        <div className="space-y-6">
+          <div className="border-b border-slate-200 pb-4">
+            <p className="eyebrow">Financial Operations</p>
+            <h2 className="editorial-title mt-2 text-3xl">Daily Revenue Report</h2>
+            <p className="mt-1 text-xs text-slate-500">
+              Per-day breakdown of tickets issued and revenue collected — online and cash separately.
+            </p>
+          </div>
+
+          {!selectedEventId ? (
+            <div className="panel p-8 text-center text-sm text-slate-500">
+              <BarChart3 className="w-8 h-8 mx-auto text-slate-300 mb-3" />
+              Please select an event from the dropdown above to view the daily report.
+            </div>
+          ) : dailyReportLoading ? (
+            <div className="flex items-center justify-center p-10 gap-2 text-slate-400">
+              <RefreshCw className="w-4 h-4 animate-spin text-violet-600" />
+              <span className="text-sm">Loading daily report...</span>
+            </div>
+          ) : (
+            <>
+              {/* Channel toggle */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setDailyChannel("ONLINE")}
+                  className={`px-4 py-2 rounded-xl text-xs font-extrabold uppercase tracking-wider border transition ${
+                    dailyChannel === "ONLINE"
+                      ? "bg-emerald-600 text-white border-emerald-600"
+                      : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                  }`}
+                >
+                  💳 Online (Razorpay)
+                </button>
+                <button
+                  onClick={() => setDailyChannel("CASH")}
+                  className={`px-4 py-2 rounded-xl text-xs font-extrabold uppercase tracking-wider border transition ${
+                    dailyChannel === "CASH"
+                      ? "bg-pink-600 text-white border-pink-600"
+                      : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                  }`}
+                >
+                  💵 Cash (Offline)
+                </button>
+                <button
+                  onClick={() => void loadDailyReport()}
+                  className="ml-auto px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* Grand total summary cards */}
+              {dailyRevenue && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="panel p-4 bg-gradient-to-br from-emerald-50 to-green-50 border-emerald-200">
+                    <div className="text-[10px] font-extrabold uppercase text-emerald-700">Online Tickets</div>
+                    <div className="text-2xl font-black text-emerald-800 mt-1">{dailyRevenue.totals.total_online_tickets}</div>
+                  </div>
+                  <div className="panel p-4 bg-gradient-to-br from-emerald-50 to-teal-50 border-emerald-200">
+                    <div className="text-[10px] font-extrabold uppercase text-emerald-700">Online Revenue</div>
+                    <div className="text-2xl font-black text-emerald-800 mt-1">₹{dailyRevenue.totals.total_online_amount.toLocaleString()}</div>
+                  </div>
+                  <div className="panel p-4 bg-gradient-to-br from-pink-50 to-rose-50 border-pink-200">
+                    <div className="text-[10px] font-extrabold uppercase text-pink-700">Cash Tickets</div>
+                    <div className="text-2xl font-black text-pink-800 mt-1">{dailyRevenue.totals.total_cash_tickets}</div>
+                  </div>
+                  <div className="panel p-4 bg-gradient-to-br from-pink-50 to-rose-50 border-pink-200">
+                    <div className="text-[10px] font-extrabold uppercase text-pink-700">Cash Revenue</div>
+                    <div className="text-2xl font-black text-pink-800 mt-1">₹{dailyRevenue.totals.total_cash_amount.toLocaleString()}</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Grand Total Banner */}
+              {dailyRevenue && (
+                <div className="panel p-4 flex flex-wrap justify-between items-center gap-4 bg-gradient-to-r from-violet-50 to-indigo-50 border-violet-200">
+                  <div>
+                    <div className="text-[10px] font-extrabold uppercase text-violet-700">Total Tickets Issued (All Channels)</div>
+                    <div className="text-3xl font-black text-violet-900 mt-0.5">{dailyRevenue.totals.total_tickets}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[10px] font-extrabold uppercase text-violet-700">Total Amount Collected</div>
+                    <div className="text-3xl font-black text-violet-900 mt-0.5">₹{dailyRevenue.totals.total_amount.toLocaleString()}</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Daily Revenue Table */}
+              <div className="panel overflow-hidden">
+                <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                  <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4 text-violet-600" />
+                    {dailyChannel === "ONLINE" ? "Online (Razorpay) Daily Breakdown" : "Cash (Offline) Daily Breakdown"}
+                  </h3>
+                  <span className="text-[10px] text-slate-400 font-medium">
+                    {(dailyChannel === "ONLINE" ? dailyRevenue?.online : dailyRevenue?.cash)?.length ?? 0} day(s) of data
+                  </span>
+                </div>
+                <div className="overflow-x-auto max-h-96 overflow-y-auto">
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0 bg-slate-50 border-b border-slate-200">
+                      <tr>
+                        <th className="px-4 py-3 text-left font-extrabold text-slate-700">Date</th>
+                        <th className="px-4 py-3 text-right font-extrabold text-slate-700">Tickets Issued</th>
+                        <th className="px-4 py-3 text-right font-extrabold text-slate-700">Amount (₹)</th>
+                        <th className="px-4 py-3 text-right font-extrabold text-slate-500">Cumulative Tickets</th>
+                        <th className="px-4 py-3 text-right font-extrabold text-slate-500">Cumulative Amount (₹)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {(() => {
+                        const rows = dailyChannel === "ONLINE" ? dailyRevenue?.online : dailyRevenue?.cash;
+                        if (!rows || rows.length === 0) {
+                          return (
+                            <tr>
+                              <td colSpan={5} className="px-4 py-8 text-center text-slate-400">
+                                No {dailyChannel.toLowerCase()} transactions recorded yet.
+                              </td>
+                            </tr>
+                          );
+                        }
+                        return rows.map((row, idx) => (
+                          <tr key={idx} className="hover:bg-slate-50 transition">
+                            <td className="px-4 py-3 font-mono font-bold text-slate-900">{row.date}</td>
+                            <td className="px-4 py-3 text-right font-bold">{row.tickets_issued}</td>
+                            <td className="px-4 py-3 text-right font-bold text-emerald-700">₹{row.amount.toLocaleString()}</td>
+                            <td className="px-4 py-3 text-right text-slate-500">{row.cumulative_tickets}</td>
+                            <td className="px-4 py-3 text-right text-slate-500">₹{row.cumulative_amount.toLocaleString()}</td>
+                          </tr>
+                        ));
+                      })()}
+                    </tbody>
+                    {/* Grand Total Row */}
+                    {dailyRevenue && (
+                      <tfoot>
+                        <tr className="bg-slate-900 text-white">
+                          <td className="px-4 py-3 font-extrabold text-[11px] uppercase tracking-wider">TOTAL</td>
+                          <td className="px-4 py-3 text-right font-extrabold">
+                            {dailyChannel === "ONLINE" ? dailyRevenue.totals.total_online_tickets : dailyRevenue.totals.total_cash_tickets}
+                          </td>
+                          <td className="px-4 py-3 text-right font-extrabold text-emerald-400">
+                            ₹{(dailyChannel === "ONLINE" ? dailyRevenue.totals.total_online_amount : dailyRevenue.totals.total_cash_amount).toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3 text-right" colSpan={2}></td>
+                        </tr>
+                      </tfoot>
+                    )}
+                  </table>
+                </div>
+              </div>
+
+              {/* Per-Collector Breakdown */}
+              <div className="panel overflow-hidden">
+                <div className="px-5 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
+                  <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                    <Users className="w-4 h-4 text-pink-600" />
+                    Cash Collector Breakdown
+                  </h3>
+                  <div className="flex items-center gap-2">
+                    <label className="text-[10px] font-bold text-slate-600 uppercase">Filter by date:</label>
+                    <input
+                      type="date"
+                      value={collectorDateFilter}
+                      onChange={(e) => setCollectorDateFilter(e.target.value)}
+                      className="field-control !py-1 !px-2 !text-xs !w-auto"
+                    />
+                    {collectorDateFilter && (
+                      <button
+                        onClick={() => setCollectorDateFilter("")}
+                        className="text-xs text-slate-400 hover:text-slate-700 font-bold"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                      <tr>
+                        <th className="px-4 py-3 text-left font-extrabold text-slate-700">Date</th>
+                        <th className="px-4 py-3 text-left font-extrabold text-slate-700">Collector Name</th>
+                        <th className="px-4 py-3 text-left font-extrabold text-slate-700">Email</th>
+                        <th className="px-4 py-3 text-right font-extrabold text-slate-700">Tickets Collected</th>
+                        <th className="px-4 py-3 text-right font-extrabold text-slate-700">Cash Amount (₹)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {dailyCollectors.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="px-4 py-8 text-center text-slate-400">
+                            No cash collector records {collectorDateFilter ? `for ${collectorDateFilter}` : "yet"}.
+                          </td>
+                        </tr>
+                      ) : (
+                        dailyCollectors.map((row, idx) => (
+                          <tr key={idx} className="hover:bg-slate-50 transition">
+                            <td className="px-4 py-3 font-mono font-bold text-slate-800">{row.date}</td>
+                            <td className="px-4 py-3 font-bold text-slate-900">{row.collector_name}</td>
+                            <td className="px-4 py-3 text-slate-500 font-mono text-[10px]">{row.collector_email}</td>
+                            <td className="px-4 py-3 text-right font-bold">{row.tickets_count}</td>
+                            <td className="px-4 py-3 text-right font-bold text-pink-700">₹{row.total_cash.toLocaleString()}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                    {dailyCollectors.length > 0 && (
+                      <tfoot>
+                        <tr className="bg-slate-900 text-white">
+                          <td className="px-4 py-3 font-extrabold text-[11px] uppercase" colSpan={3}>TOTAL</td>
+                          <td className="px-4 py-3 text-right font-extrabold">
+                            {dailyCollectors.reduce((s, r) => s + r.tickets_count, 0)}
+                          </td>
+                          <td className="px-4 py-3 text-right font-extrabold text-emerald-400">
+                            ₹{dailyCollectors.reduce((s, r) => s + r.total_cash, 0).toLocaleString()}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    )}
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* TAB: Settlements */}
+      {activeTab === "settlements" && (
+        <div className="space-y-6">
+          <div className="flex flex-wrap items-end justify-between gap-4 border-b border-slate-200 pb-4">
+            <div>
+              <p className="eyebrow">Finance Management</p>
+              <h2 className="editorial-title mt-2 text-3xl">Settlements</h2>
+              <p className="mt-1 text-xs text-slate-500">
+                Track daily collections and mark them as settled to the organizing committee.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => void loadSettlements()}
+                className="px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${settlementsLoading ? "animate-spin" : ""}`} />
+              </button>
+              {isSuperAdmin && (
+                <button
+                  onClick={() => setShowCreateSettlementModal(true)}
+                  className="button-primary button-accent !min-h-10 !px-4 !text-[10px]"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Create Settlement Record</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {settlementsLoading ? (
+            <div className="flex items-center justify-center p-10 gap-2 text-slate-400">
+              <RefreshCw className="w-4 h-4 animate-spin text-amber-600" />
+              <span className="text-sm">Loading settlements...</span>
+            </div>
+          ) : settlements.length === 0 ? (
+            <div className="panel p-10 text-center">
+              <Receipt className="w-8 h-8 mx-auto text-slate-300 mb-3" />
+              <p className="text-sm text-slate-500">
+                No settlement records found.
+                {isSuperAdmin && " Create one using the button above."}
+              </p>
+            </div>
+          ) : (
+            <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-50 border-b border-slate-200">
+                    <tr>
+                      <th className="px-4 py-3 text-left font-extrabold text-slate-700">Receipt No.</th>
+                      <th className="px-4 py-3 text-left font-extrabold text-slate-700">Date</th>
+                      <th className="px-4 py-3 text-left font-extrabold text-slate-700">Event</th>
+                      <th className="px-4 py-3 text-right font-extrabold text-slate-700">Online (₹)</th>
+                      <th className="px-4 py-3 text-right font-extrabold text-slate-700">Cash (₹)</th>
+                      <th className="px-4 py-3 text-right font-extrabold text-slate-700">Total (₹)</th>
+                      <th className="px-4 py-3 text-center font-extrabold text-slate-700">Status</th>
+                      <th className="px-4 py-3 text-right font-extrabold text-slate-700">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {settlements.map((s) => (
+                      <tr key={s.id} className="hover:bg-slate-50 transition">
+                        <td className="px-4 py-3 font-mono font-bold text-slate-800 text-[11px]">{s.receipt_number || "—"}</td>
+                        <td className="px-4 py-3 font-mono font-bold text-slate-900">{s.settlement_date}</td>
+                        <td className="px-4 py-3 text-slate-600">{s.event_title || "All Events"}</td>
+                        <td className="px-4 py-3 text-right font-bold text-emerald-700">₹{s.total_online_amount.toLocaleString()}</td>
+                        <td className="px-4 py-3 text-right font-bold text-pink-700">₹{s.total_cash_amount.toLocaleString()}</td>
+                        <td className="px-4 py-3 text-right font-extrabold text-slate-900">₹{s.total_amount.toLocaleString()}</td>
+                        <td className="px-4 py-3 text-center">
+                          {s.is_settled ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              <CheckSquare className="w-3 h-3" /> SETTLED
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-amber-50 text-amber-700 border border-amber-200">
+                              <AlertCircle className="w-3 h-3" /> PENDING
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex justify-end gap-1.5">
+                            {s.is_settled ? (
+                              <button
+                                onClick={() => setReceiptSettlement(s)}
+                                className="px-2.5 py-1 bg-violet-50 text-violet-700 hover:bg-violet-100 border border-violet-200 font-bold rounded-lg text-[10px] inline-flex items-center gap-1 transition"
+                              >
+                                <Receipt className="w-3 h-3" /> View Receipt
+                              </button>
+                            ) : isSuperAdmin ? (
+                              <button
+                                onClick={() => {
+                                  setSettlingId(s.id);
+                                  setSettlementForm({
+                                    receiver_name: "",
+                                    bank_name: "",
+                                    account_number: "",
+                                    ifsc_code: "",
+                                    transaction_id: "",
+                                    transaction_date: new Date().toISOString().slice(0, 10),
+                                    notes: "",
+                                    authorized_by_name: "",
+                                  });
+                                  setShowSettleModal(true);
+                                }}
+                                className="px-2.5 py-1 bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 font-bold rounded-lg text-[10px] inline-flex items-center gap-1 transition"
+                              >
+                                <CheckSquare className="w-3 h-3" /> Mark Settled
+                              </button>
+                            ) : (
+                              <span className="text-slate-400 text-[10px] font-medium">Pending settlement</span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Create Settlement Modal */}
+          {showCreateSettlementModal && isSuperAdmin && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+              <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200">
+                <div className="p-6 border-b border-slate-100">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-base font-extrabold text-slate-900">Create Settlement Record</h3>
+                      <p className="text-xs text-slate-500 mt-0.5">Enter the daily totals for this settlement period.</p>
+                    </div>
+                    <button onClick={() => setShowCreateSettlementModal(false)} className="text-slate-400 hover:text-slate-700">
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+                <form onSubmit={handleCreateSettlement} className="p-6 space-y-4">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="text-[10px] font-extrabold uppercase text-slate-600">Settlement Date *</label>
+                      <input
+                        type="date"
+                        required
+                        value={newSettlementForm.settlement_date}
+                        onChange={(e) => setNewSettlementForm((f) => ({ ...f, settlement_date: e.target.value }))}
+                        className="field-control mt-1"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-extrabold uppercase text-slate-600">Event (leave blank = all events)</label>
+                      <select
+                        value={newSettlementForm.event_id}
+                        onChange={(e) => setNewSettlementForm((f) => ({ ...f, event_id: e.target.value }))}
+                        className="field-control mt-1"
+                      >
+                        <option value="">All Events</option>
+                        {events.map((ev) => (
+                          <option key={ev.id} value={ev.id}>{ev.title}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-extrabold uppercase text-slate-600">Online Amount (₹) *</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        required
+                        value={newSettlementForm.total_online_amount}
+                        onChange={(e) => setNewSettlementForm((f) => ({ ...f, total_online_amount: Number(e.target.value) }))}
+                        className="field-control mt-1"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-extrabold uppercase text-slate-600">Cash Amount (₹) *</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        required
+                        value={newSettlementForm.total_cash_amount}
+                        onChange={(e) => setNewSettlementForm((f) => ({ ...f, total_cash_amount: Number(e.target.value) }))}
+                        className="field-control mt-1"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-extrabold uppercase text-slate-600">Tickets Issued *</label>
+                      <input
+                        type="number"
+                        min="0"
+                        required
+                        value={newSettlementForm.total_tickets_issued}
+                        onChange={(e) => setNewSettlementForm((f) => ({ ...f, total_tickets_issued: Number(e.target.value) }))}
+                        className="field-control mt-1"
+                      />
+                    </div>
+                    <div className="flex items-end">
+                      <div className="field-control mt-1 bg-slate-50 flex items-center justify-between px-3 py-2.5">
+                        <span className="text-[10px] text-slate-500 font-bold uppercase">Total Amount</span>
+                        <span className="font-extrabold text-slate-900">
+                          ₹{(Number(newSettlementForm.total_online_amount) + Number(newSettlementForm.total_cash_amount)).toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowCreateSettlementModal(false)}
+                      className="flex-1 px-4 py-2 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 transition"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={creatingSettlement}
+                      className="flex-1 button-primary button-accent"
+                    >
+                      {creatingSettlement ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                      {creatingSettlement ? "Creating..." : "Create Record"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* Mark as Settled Modal */}
+          {showSettleModal && settlingId && isSuperAdmin && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+              <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-amber-200 max-h-[90vh] overflow-y-auto">
+                <div className="p-6 border-b border-amber-100 bg-amber-50">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-amber-100 rounded-xl">
+                        <Building2 className="w-5 h-5 text-amber-700" />
+                      </div>
+                      <div>
+                        <h3 className="text-base font-extrabold text-slate-900">Mark as Settled</h3>
+                        <p className="text-xs text-amber-700 mt-0.5">Enter bank transfer details to generate settlement receipt.</p>
+                      </div>
+                    </div>
+                    <button onClick={() => setShowSettleModal(false)} className="text-slate-400 hover:text-slate-700">
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+                <form onSubmit={handleMarkSettled} className="p-6 space-y-4">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="sm:col-span-2">
+                      <label className="text-[10px] font-extrabold uppercase text-slate-600">Receiver / Beneficiary Name *</label>
+                      <input
+                        type="text"
+                        required
+                        value={settlementForm.receiver_name}
+                        onChange={(e) => setSettlementForm((f) => ({ ...f, receiver_name: e.target.value }))}
+                        placeholder="e.g. Sphoorthy Engineering College"
+                        className="field-control mt-1"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-extrabold uppercase text-slate-600">Bank Name *</label>
+                      <input
+                        type="text"
+                        required
+                        value={settlementForm.bank_name}
+                        onChange={(e) => setSettlementForm((f) => ({ ...f, bank_name: e.target.value }))}
+                        placeholder="e.g. State Bank of India"
+                        className="field-control mt-1"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-extrabold uppercase text-slate-600">Account Number *</label>
+                      <input
+                        type="text"
+                        required
+                        value={settlementForm.account_number}
+                        onChange={(e) => setSettlementForm((f) => ({ ...f, account_number: e.target.value }))}
+                        placeholder="Bank account number"
+                        className="field-control mt-1 font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-extrabold uppercase text-slate-600">IFSC Code *</label>
+                      <input
+                        type="text"
+                        required
+                        value={settlementForm.ifsc_code}
+                        onChange={(e) => setSettlementForm((f) => ({ ...f, ifsc_code: e.target.value.toUpperCase() }))}
+                        placeholder="e.g. SBIN0001234"
+                        className="field-control mt-1 font-mono uppercase"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-extrabold uppercase text-slate-600">UTR / Transaction ID *</label>
+                      <input
+                        type="text"
+                        required
+                        value={settlementForm.transaction_id}
+                        onChange={(e) => setSettlementForm((f) => ({ ...f, transaction_id: e.target.value }))}
+                        placeholder="e.g. UTR123456789012"
+                        className="field-control mt-1 font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-extrabold uppercase text-slate-600">Transaction Date</label>
+                      <input
+                        type="date"
+                        value={settlementForm.transaction_date}
+                        onChange={(e) => setSettlementForm((f) => ({ ...f, transaction_date: e.target.value }))}
+                        className="field-control mt-1"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="text-[10px] font-extrabold uppercase text-slate-600">Authorized By (Name & Designation)</label>
+                      <input
+                        type="text"
+                        value={settlementForm.authorized_by_name}
+                        onChange={(e) => setSettlementForm((f) => ({ ...f, authorized_by_name: e.target.value }))}
+                        placeholder="e.g. Dr. Rajesh Kumar, Principal"
+                        className="field-control mt-1"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="text-[10px] font-extrabold uppercase text-slate-600">Notes / Remarks</label>
+                      <textarea
+                        rows={2}
+                        value={settlementForm.notes}
+                        onChange={(e) => setSettlementForm((f) => ({ ...f, notes: e.target.value }))}
+                        placeholder="Optional remarks for this settlement..."
+                        className="field-control mt-1"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowSettleModal(false)}
+                      className="flex-1 px-4 py-2 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 transition"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={submittingSettle}
+                      className="flex-1 button-primary button-accent"
+                    >
+                      {submittingSettle ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <CheckSquare className="w-3.5 h-3.5" />}
+                      {submittingSettle ? "Processing..." : "Confirm Settlement & Generate Receipt"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* Settlement Receipt Modal */}
+          {receiptSettlement && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+              <div className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-slate-200 max-h-[95vh] overflow-y-auto">
+                <div className="flex items-center justify-between p-4 border-b border-slate-100 no-print">
+                  <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                    <Receipt className="w-4 h-4 text-violet-600" /> Settlement Receipt
+                  </h3>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handlePrintReceipt}
+                      className="px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 transition"
+                    >
+                      <Printer className="w-3.5 h-3.5" /> Print / Save PDF
+                    </button>
+                    <button
+                      onClick={() => setReceiptSettlement(null)}
+                      className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+
+                {/* Receipt Content */}
+                <div id="settlement-receipt" ref={receiptRef} className="p-8 space-y-6">
+                  {/* Header */}
+                  <div className="text-center border-b-2 border-slate-900 pb-5">
+                    <div className="text-2xl font-extrabold text-slate-900 tracking-tight">SPHOORTHY ENGINEERING COLLEGE</div>
+                    <div className="text-sm text-slate-600 mt-1">Student Event Management — Financial Settlement Receipt</div>
+                    <div className="mt-3 inline-block bg-slate-900 text-white px-4 py-1 rounded-full text-xs font-extrabold tracking-widest">
+                      {receiptSettlement.receipt_number || "RECEIPT"}
+                    </div>
+                  </div>
+
+                  {/* Two-column summary */}
+                  <div className="grid grid-cols-2 gap-6 text-sm">
+                    <div className="space-y-2">
+                      <div>
+                        <span className="text-[10px] font-extrabold uppercase text-slate-500">Settlement Date</span>
+                        <div className="font-bold text-slate-900">{receiptSettlement.settlement_date}</div>
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-extrabold uppercase text-slate-500">Event</span>
+                        <div className="font-bold text-slate-900">{receiptSettlement.event_title || "All Events"}</div>
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-extrabold uppercase text-slate-500">Tickets Issued</span>
+                        <div className="font-bold text-slate-900">{receiptSettlement.total_tickets_issued}</div>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <div>
+                        <span className="text-[10px] font-extrabold uppercase text-slate-500">Receipt Generated At</span>
+                        <div className="font-bold text-slate-900">
+                          {receiptSettlement.settled_at ? new Date(receiptSettlement.settled_at).toLocaleString() : "—"}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-extrabold uppercase text-slate-500">Processed By</span>
+                        <div className="font-bold text-slate-900">{receiptSettlement.settler_name || receiptSettlement.settler_email || "—"}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Amount Breakdown */}
+                  <div className="border border-slate-200 rounded-xl overflow-hidden">
+                    <div className="bg-slate-50 px-4 py-2 text-[10px] font-extrabold uppercase tracking-wider text-slate-600">Amount Breakdown</div>
+                    <table className="w-full text-sm">
+                      <tbody>
+                        <tr className="border-b border-slate-100">
+                          <td className="px-4 py-2.5 text-slate-600">Online Collections (Razorpay)</td>
+                          <td className="px-4 py-2.5 text-right font-bold text-emerald-700">₹{receiptSettlement.total_online_amount.toLocaleString()}</td>
+                        </tr>
+                        <tr className="border-b border-slate-100">
+                          <td className="px-4 py-2.5 text-slate-600">Cash Collections (Offline)</td>
+                          <td className="px-4 py-2.5 text-right font-bold text-pink-700">₹{receiptSettlement.total_cash_amount.toLocaleString()}</td>
+                        </tr>
+                        <tr className="bg-slate-900 text-white">
+                          <td className="px-4 py-3 font-extrabold">TOTAL SETTLED AMOUNT</td>
+                          <td className="px-4 py-3 text-right font-extrabold text-emerald-400 text-base">₹{receiptSettlement.total_amount.toLocaleString()}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Bank Details */}
+                  <div className="border border-slate-200 rounded-xl overflow-hidden">
+                    <div className="bg-slate-50 px-4 py-2 text-[10px] font-extrabold uppercase tracking-wider text-slate-600">Bank Transfer Details</div>
+                    <div className="grid grid-cols-2 gap-4 p-4 text-sm">
+                      <div>
+                        <div className="text-[10px] font-extrabold uppercase text-slate-500">Beneficiary Name</div>
+                        <div className="font-bold text-slate-900">{receiptSettlement.receiver_name || "—"}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-extrabold uppercase text-slate-500">Bank Name</div>
+                        <div className="font-bold text-slate-900">{receiptSettlement.bank_name || "—"}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-extrabold uppercase text-slate-500">Account Number</div>
+                        <div className="font-bold font-mono text-slate-900">{receiptSettlement.account_number || "—"}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-extrabold uppercase text-slate-500">IFSC Code</div>
+                        <div className="font-bold font-mono text-slate-900">{receiptSettlement.ifsc_code || "—"}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-extrabold uppercase text-slate-500">UTR / Transaction ID</div>
+                        <div className="font-bold font-mono text-slate-900">{receiptSettlement.transaction_id || "—"}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-extrabold uppercase text-slate-500">Transaction Date</div>
+                        <div className="font-bold text-slate-900">{receiptSettlement.transaction_date || "—"}</div>
+                      </div>
+                    </div>
+                    {receiptSettlement.notes && (
+                      <div className="px-4 pb-4">
+                        <div className="text-[10px] font-extrabold uppercase text-slate-500">Notes</div>
+                        <div className="text-sm text-slate-700 mt-0.5">{receiptSettlement.notes}</div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Signature Block */}
+                  <div className="grid grid-cols-2 gap-8 pt-4">
+                    <div className="border-t-2 border-slate-300 pt-3">
+                      <div className="text-[10px] font-extrabold uppercase text-slate-500">Authorized By</div>
+                      <div className="font-bold text-slate-900 mt-1">{receiptSettlement.authorized_by_name || "—"}</div>
+                      <div className="text-[10px] text-slate-400">Signature</div>
+                    </div>
+                    <div className="border-t-2 border-slate-300 pt-3">
+                      <div className="text-[10px] font-extrabold uppercase text-slate-500">Received By (Organizing Committee)</div>
+                      <div className="mt-6 h-px bg-slate-300" />
+                      <div className="text-[10px] text-slate-400 mt-1">Signature & Date</div>
+                    </div>
+                  </div>
+
+                  {/* Footer */}
+                  <div className="text-center text-[10px] text-slate-400 border-t border-slate-100 pt-4">
+                    This is a computer-generated settlement receipt. Generated by Sphoorthy Events Platform.
+                  </div>
+                </div>
               </div>
             </div>
           )}

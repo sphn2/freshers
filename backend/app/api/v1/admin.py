@@ -601,3 +601,304 @@ def manage_convenience_fee_settings():
             return jsonify({"error": str(e)}), 400
         except Exception:
             return internal_error("updating convenience fee settings")
+
+from app.services.student_directory_service import student_directory_service
+import io
+
+@admin_bp.route("/student-directory/upload", methods=["POST"])
+@require_roles("SUPER_ADMIN", "ADMIN")
+def upload_student_directory():
+    try:
+        if "file" not in request.files:
+            return jsonify({"error": "No file uploaded. Please select an Excel or CSV file."}), 400
+        
+        file = request.files["file"]
+        if not file.filename:
+            return jsonify({"error": "No selected file."}), 400
+
+        stream = io.BytesIO(file.read())
+        user_id = g.current_user["id"] if hasattr(g, "current_user") and g.current_user else None
+        result = student_directory_service.import_directory_file(file.filename, stream, user_id=user_id)
+        return jsonify(result), 200
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception:
+        return internal_error("importing student directory records")
+
+@admin_bp.route("/student-directory", methods=["GET"])
+@require_roles("SUPER_ADMIN", "ADMIN")
+def get_student_directory():
+    try:
+        search = request.args.get("search")
+        department = request.args.get("department")
+        page = int(request.args.get("page", 1))
+        limit = int(request.args.get("limit", 50))
+        result = student_directory_service.get_directory_students(
+            search=search, department=department, page=page, limit=limit
+        )
+        return jsonify(result), 200
+    except Exception:
+        return internal_error("fetching student directory records")
+
+@admin_bp.route("/student-directory/stats", methods=["GET"])
+@require_roles("SUPER_ADMIN", "ADMIN")
+def get_student_directory_stats():
+    try:
+        stats = student_directory_service.get_directory_stats()
+        return jsonify(stats), 200
+    except Exception:
+        return internal_error("fetching student directory stats")
+
+@admin_bp.route("/student-directory/<student_id>", methods=["DELETE"])
+@require_roles("SUPER_ADMIN", "ADMIN")
+def delete_student_directory_record(student_id):
+    try:
+        user_id = g.current_user["id"] if hasattr(g, "current_user") and g.current_user else None
+        student_directory_service.delete_student(student_id, user_id=user_id)
+        return jsonify({"message": "Student directory record deleted successfully."}), 200
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
+    except Exception:
+        return internal_error("deleting student directory record")
+
+@admin_bp.route("/student-directory", methods=["DELETE"])
+@require_roles("SUPER_ADMIN")
+def clear_student_directory():
+    try:
+        user_id = g.current_user["id"] if hasattr(g, "current_user") and g.current_user else None
+        cleared = student_directory_service.clear_directory(user_id=user_id)
+        return jsonify({"message": f"Successfully cleared {cleared} records from the student directory.", "cleared": cleared}), 200
+    except Exception:
+        return internal_error("clearing student directory")
+
+@admin_bp.route("/student-directory/template", methods=["GET"])
+@require_roles("SUPER_ADMIN", "ADMIN")
+def download_student_directory_template():
+    try:
+        csv_data = student_directory_service.generate_csv_template()
+        return Response(
+            csv_data,
+            mimetype="text/csv",
+            headers={"Content-Disposition": "attachment; filename=student_directory_template.csv"},
+        )
+    except Exception:
+        return internal_error("generating student directory template")
+
+@admin_bp.route("/events/<event_id>/toggle-autofill", methods=["PATCH"])
+@require_roles("SUPER_ADMIN", "ADMIN")
+def toggle_event_autofill(event_id):
+    try:
+        body = request.get_json() or {}
+        allow_autofill = body.get("allow_autofill")
+        if not isinstance(allow_autofill, bool):
+            return jsonify({"error": "'allow_autofill' boolean is required."}), 400
+
+        event = event_service.get_event_by_id(event_id)
+        if not event:
+            return jsonify({"error": "Event not found."}), 404
+
+        now = datetime.now(timezone.utc).isoformat()
+        db.execute_write(
+            "UPDATE events SET allow_autofill = %s, updated_at = %s WHERE id = %s",
+            (allow_autofill, now, event_id),
+        )
+
+        audit_service.log(
+            "TOGGLE_EVENT_AUTOFILL",
+            "event",
+            event_id,
+            g.current_user["id"],
+            {"allow_autofill": allow_autofill, "event_title": event.get("title")},
+        )
+
+        return jsonify({
+            "message": f"Prefill data verification {'enabled' if allow_autofill else 'disabled'} for event.",
+            "allow_autofill": allow_autofill,
+            "event_id": event_id,
+        }), 200
+    except Exception:
+        return internal_error("toggling event autofill")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FINANCIAL REPORTING — Daily Revenue & Collectors
+# ─────────────────────────────────────────────────────────────────────────────
+
+@admin_bp.route("/reports/daily-revenue", methods=["GET"])
+@require_roles("ADMIN", "EVENT_MANAGER")
+def report_daily_revenue():
+    """
+    Returns per-day online and cash revenue for an event.
+    Query params: event_id (required), date_from, date_to (optional YYYY-MM-DD).
+    """
+    try:
+        event_id = request.args.get("event_id")
+        if not event_id:
+            return jsonify({"error": "event_id is required for daily revenue report."}), 400
+        if not enforce_event_access(event_id):
+            return jsonify({"error": "Forbidden. Event not assigned to you."}), 403
+
+        date_from = request.args.get("date_from")
+        date_to = request.args.get("date_to")
+        data = report_service.get_daily_revenue_report(
+            event_id=event_id,
+            date_from=date_from,
+            date_to=date_to,
+        )
+        return jsonify(data), 200
+    except Exception:
+        return internal_error("building the daily revenue report")
+
+
+@admin_bp.route("/reports/daily-collectors", methods=["GET"])
+@require_roles("ADMIN", "EVENT_MANAGER")
+def report_daily_collectors():
+    """
+    Returns per-collector cash breakdown for an event.
+    Query params: event_id (required), date (optional YYYY-MM-DD — if omitted, returns all dates).
+    """
+    try:
+        event_id = request.args.get("event_id")
+        if not event_id:
+            return jsonify({"error": "event_id is required for collector breakdown."}), 400
+        if not enforce_event_access(event_id):
+            return jsonify({"error": "Forbidden. Event not assigned to you."}), 403
+
+        target_date = request.args.get("date")
+        rows = report_service.get_daily_collector_breakdown(
+            event_id=event_id,
+            target_date=target_date,
+        )
+        return jsonify({"collectors": rows}), 200
+    except Exception:
+        return internal_error("building the daily collectors report")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FINANCIAL REPORTING — Settlements
+# ─────────────────────────────────────────────────────────────────────────────
+
+@admin_bp.route("/settlements", methods=["GET"])
+@require_roles("ADMIN", "SUPER_ADMIN")
+def list_settlements():
+    """List all settlement records, optionally filtered by event_id."""
+    try:
+        event_id = request.args.get("event_id") or None
+        if is_event_manager_only() and not event_id:
+            return jsonify({"error": "Event managers must select an assigned event."}), 400
+        if event_id and not enforce_event_access(event_id):
+            return jsonify({"error": "Forbidden. Event not assigned to you."}), 403
+
+        rows = report_service.get_settlement_list(event_id=event_id)
+        # Coerce is_settled to bool (SQLite stores as 0/1)
+        for r in rows:
+            r["is_settled"] = bool(r.get("is_settled"))
+        return jsonify({"settlements": rows}), 200
+    except Exception:
+        return internal_error("fetching settlements")
+
+
+@admin_bp.route("/settlements", methods=["POST"])
+@require_roles("SUPER_ADMIN")
+def create_settlement():
+    """
+    Create a new (unsettled) daily settlement record.
+    Body: { event_id (nullable), settlement_date, total_online_amount, total_cash_amount, total_tickets_issued }
+    """
+    try:
+        body = request.get_json() or {}
+        event_id = body.get("event_id") or None
+        settlement_date = str(body.get("settlement_date", "")).strip()
+        if not settlement_date or len(settlement_date) != 10:
+            return jsonify({"error": "settlement_date (YYYY-MM-DD) is required."}), 400
+
+        total_online = float(body.get("total_online_amount", 0) or 0)
+        total_cash = float(body.get("total_cash_amount", 0) or 0)
+        total_tickets = int(body.get("total_tickets_issued", 0) or 0)
+
+        record = report_service.create_settlement(
+            event_id=event_id,
+            settlement_date=settlement_date,
+            total_online_amount=total_online,
+            total_cash_amount=total_cash,
+            total_tickets_issued=total_tickets,
+            created_by=g.current_user["id"],
+        )
+        audit_service.log(
+            "CREATE_SETTLEMENT",
+            "daily_settlement",
+            record["id"],
+            g.current_user["id"],
+            {"date": settlement_date, "event_id": event_id, "total": record["total_amount"]},
+        )
+        return jsonify({"message": "Settlement record created.", "settlement": record}), 201
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception:
+        return internal_error("creating settlement record")
+
+
+@admin_bp.route("/settlements/<settlement_id>", methods=["GET"])
+@require_roles("ADMIN", "SUPER_ADMIN")
+def get_settlement(settlement_id):
+    """Get a single settlement record with full details for receipt view."""
+    try:
+        record = report_service.get_settlement_by_id(settlement_id)
+        if not record:
+            return jsonify({"error": "Settlement not found."}), 404
+        record["is_settled"] = bool(record.get("is_settled"))
+        return jsonify({"settlement": record}), 200
+    except Exception:
+        return internal_error("fetching settlement")
+
+
+@admin_bp.route("/settlements/<settlement_id>/settle", methods=["PATCH"])
+@require_roles("SUPER_ADMIN")
+def mark_settlement_settled(settlement_id):
+    """
+    Mark a settlement as settled and store bank/transaction details.
+    Body: { receiver_name, bank_name, account_number, ifsc_code,
+            transaction_id, transaction_date, notes, authorized_by_name }
+    """
+    try:
+        body = request.get_json() or {}
+        required_fields = ["receiver_name", "bank_name", "account_number", "ifsc_code", "transaction_id"]
+        missing = [f for f in required_fields if not str(body.get(f, "")).strip()]
+        if missing:
+            return jsonify({"error": f"Missing required fields: {', '.join(missing)}"}), 400
+
+        record = report_service.mark_settlement_settled(
+            settlement_id=settlement_id,
+            settled_by=g.current_user["id"],
+            receiver_name=str(body["receiver_name"]).strip(),
+            bank_name=str(body["bank_name"]).strip(),
+            account_number=str(body["account_number"]).strip(),
+            ifsc_code=str(body.get("ifsc_code", "")).strip(),
+            transaction_id=str(body["transaction_id"]).strip(),
+            transaction_date=str(body.get("transaction_date", "")).strip(),
+            notes=str(body.get("notes", "")).strip(),
+            authorized_by_name=str(body.get("authorized_by_name", "")).strip(),
+        )
+        if not record:
+            return jsonify({"error": "Settlement not found."}), 404
+        record["is_settled"] = bool(record.get("is_settled"))
+        audit_service.log(
+            "MARK_SETTLEMENT_SETTLED",
+            "daily_settlement",
+            settlement_id,
+            g.current_user["id"],
+            {
+                "receipt_number": record.get("receipt_number"),
+                "transaction_id": body["transaction_id"],
+                "total_amount": record.get("total_amount"),
+            },
+        )
+        return jsonify({
+            "message": f"Settlement {record.get('receipt_number')} marked as settled successfully.",
+            "settlement": record,
+        }), 200
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception:
+        return internal_error("marking settlement as settled")
+

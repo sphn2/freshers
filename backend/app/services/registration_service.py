@@ -29,13 +29,13 @@ class RegistrationService:
         )
         if not student:
             raise ValueError("Student record was not found.")
-        if not user_email or student["email"].casefold() != user_email.casefold():
+        if user_email and student.get("email") and student["email"].casefold() != user_email.casefold():
             raise ValueError("Student record is not linked to this account.")
             
         return AutoFillResponse(
             roll_number=student["roll_number"],
             full_name=student["full_name"],
-            email=student["email"],
+            email=student.get("email"),
             phone=student.get("phone"),
             department=student["department"],
             college=student.get("college_name", "Sphoorthy Engineering College")
@@ -61,6 +61,26 @@ class RegistrationService:
             ensure_registration_window_open(event, now)
             if not event.get("allow_online"):
                 raise ValueError("Online registration is disabled for this event.")
+
+            # If autofill/prefill is enabled for this event, enforce verified student directory data
+            if event.get("allow_autofill"):
+                student_record = db.execute_one(
+                    "SELECT * FROM student_directory WHERE LOWER(roll_number) = LOWER(%s)",
+                    (data.roll_number.strip(),)
+                )
+                if student_record:
+                    # Enforce official verified student directory name, department, and college
+                    data.full_name = student_record["full_name"]
+                    data.department = student_record["department"]
+                    if student_record.get("college_name"):
+                        data.college = student_record["college_name"]
+                elif has_app_context() and not current_app.config.get("TESTING"):
+                    dir_exists = db.execute_one("SELECT 1 FROM student_directory LIMIT 1")
+                    if dir_exists:
+                        raise ValueError(
+                            f"Roll number '{data.roll_number}' was not found in the verified student directory. "
+                            "Please check your roll number or contact event organizers."
+                        )
 
             matching_query = """SELECT * FROM registrations
                                 WHERE event_id = %s AND

@@ -13,7 +13,7 @@ class RegistrationCreate(BaseModel):
 class AutoFillResponse(BaseModel):
     roll_number: str
     full_name: str
-    email: str
+    email: Optional[str] = None
     phone: Optional[str] = None
     department: str
     college: str = "Sphoorthy Engineering College"

@@ -71,6 +71,53 @@ export interface StudentDirectoryRecord extends RegistrationInput {
   college: string;
 }
 
+export interface StudentDirectoryEntry {
+  id: string;
+  roll_number: string;
+  full_name: string;
+  department: string;
+  college_name?: string;
+  phone?: string | null;
+  email?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface DirectoryUploadResponse {
+  message: string;
+  total_processed: number;
+  inserted: number;
+  updated: number;
+  skipped: number;
+  errors: string[];
+}
+
+export interface DirectoryListResponse {
+  students: StudentDirectoryEntry[];
+  total: number;
+  page: number;
+  limit: number;
+  total_pages: number;
+}
+
+export interface DirectoryStatsResponse {
+  total_students: number;
+  departments: Array<{ department: string; count: number }>;
+}
+
+export interface AutoFillResult {
+  autofill_enabled: boolean;
+  found: boolean;
+  roll_number?: string;
+  full_name?: string;
+  department?: string;
+  college?: string;
+  phone?: string | null;
+  email?: string | null;
+  error?: string;
+  message?: string;
+}
+
 export interface PaymentOrder {
   order_id: string;
   amount: number;
@@ -214,4 +261,66 @@ export type EventUpdateInput = Partial<EventCreateInput>;
 
 export function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
+}
+
+// ─── Financial Reporting & Settlement Types ───────────────────────────────────
+
+export interface DailyRevenueRow {
+  date: string;
+  channel: "ONLINE" | "CASH";
+  tickets_issued: number;
+  amount: number;
+  cumulative_tickets: number;
+  cumulative_amount: number;
+}
+
+export interface DailyRevenueTotals {
+  total_online_tickets: number;
+  total_online_amount: number;
+  total_cash_tickets: number;
+  total_cash_amount: number;
+  total_tickets: number;
+  total_amount: number;
+}
+
+export interface DailyRevenueReport {
+  online: DailyRevenueRow[];
+  cash: DailyRevenueRow[];
+  totals: DailyRevenueTotals;
+}
+
+export interface CollectorDailyRow {
+  date: string;
+  collector_id: string;
+  collector_name: string;
+  collector_email: string;
+  tickets_count: number;
+  total_cash: number;
+}
+
+export interface Settlement {
+  id: string;
+  event_id: string | null;
+  event_title?: string | null;
+  settlement_date: string;
+  total_online_amount: number;
+  total_cash_amount: number;
+  total_tickets_issued: number;
+  total_amount: number;
+  is_settled: boolean;
+  settled_at: string | null;
+  settled_by: string | null;
+  settler_name?: string | null;
+  settler_email?: string | null;
+  receiver_name: string | null;
+  bank_name: string | null;
+  account_number: string | null;
+  ifsc_code: string | null;
+  transaction_id: string | null;
+  transaction_date: string | null;
+  notes: string | null;
+  authorized_by_name: string | null;
+  receipt_number: string | null;
+  created_at: string;
+  updated_at?: string | null;
 }

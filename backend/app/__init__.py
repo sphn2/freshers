@@ -19,7 +19,7 @@ def create_app():
     config.validate_production()
     app = Flask(__name__)
     app.config.from_object(config)
-    app.config["MAX_CONTENT_LENGTH"] = 1024 * 1024
+    app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
 
     origins = [origin.strip() for origin in config.ALLOWED_ORIGINS.split(",") if origin.strip()]
     if not config.is_production and "http://localhost:3000" not in origins:

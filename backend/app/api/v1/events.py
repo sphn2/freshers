@@ -23,17 +23,25 @@ def get_event_by_slug(slug):
     return jsonify(event), 200
 
 @events_bp.route("/<event_id>/autofill/<roll_number>", methods=["GET"])
-@require_auth
-@rate_limit(10, 60)
+@rate_limit(60, 60)
 def autofill_student(event_id, roll_number):
-    if "STUDENT" not in g.user_roles:
-        return jsonify({"error": "Only students can use registration auto-fill."}), 403
     try:
+        user_email = getattr(g, "current_user", {}).get("email") if hasattr(g, "current_user") and g.current_user else None
         data = registration_service.autofill_student_lookup(
-            event_id, roll_number, user_email=g.current_user.get("email")
+            event_id, roll_number, user_email=user_email
         )
-        return jsonify(data.model_dump()), 200
+        res = data.model_dump()
+        res["found"] = True
+        res["autofill_enabled"] = True
+        return jsonify(res), 200
     except ValueError as e:
-        return jsonify({"error": str(e)}), 400
+        msg = str(e)
+        status_code = 404 if "not found" in msg.lower() else 400
+        return jsonify({
+            "error": msg,
+            "found": False,
+            "autofill_enabled": "not enabled" not in msg.lower(),
+        }), status_code
     except Exception:
         return internal_error("looking up a student directory record")
+

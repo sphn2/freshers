@@ -47,6 +47,36 @@ class DatabaseManager:
                         INSERT INTO system_settings (key, value, updated_at)
                         VALUES ('convenience_fee_amount', '3.79', NOW()::text)
                         ON CONFLICT(key) DO NOTHING;
+                        ALTER TABLE student_directory ALTER COLUMN email DROP NOT NULL;
+                        ALTER TABLE student_directory DROP CONSTRAINT IF EXISTS student_directory_email_key;
+                        ALTER TABLE student_directory ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+                        ALTER TABLE student_directory ADD COLUMN IF NOT EXISTS college_name TEXT DEFAULT 'Sphoorthy Engineering College';
+
+                        CREATE TABLE IF NOT EXISTS daily_settlements (
+                            id TEXT PRIMARY KEY,
+                            event_id TEXT,
+                            settlement_date TEXT NOT NULL,
+                            total_online_amount REAL NOT NULL DEFAULT 0,
+                            total_cash_amount REAL NOT NULL DEFAULT 0,
+                            total_tickets_issued INTEGER NOT NULL DEFAULT 0,
+                            total_amount REAL NOT NULL DEFAULT 0,
+                            is_settled BOOLEAN NOT NULL DEFAULT FALSE,
+                            settled_at TEXT,
+                            settled_by TEXT,
+                            receiver_name TEXT,
+                            bank_name TEXT,
+                            account_number TEXT,
+                            ifsc_code TEXT,
+                            transaction_id TEXT,
+                            transaction_date TEXT,
+                            notes TEXT,
+                            authorized_by_name TEXT,
+                            receipt_number TEXT UNIQUE,
+                            created_at TEXT NOT NULL,
+                            updated_at TEXT
+                        );
+                        CREATE INDEX IF NOT EXISTS idx_daily_settlements_date
+                            ON daily_settlements (settlement_date, event_id);
                     """)
                     conn.commit()
                 conn.close()
@@ -144,11 +174,12 @@ class DatabaseManager:
                 id TEXT PRIMARY KEY,
                 roll_number TEXT UNIQUE NOT NULL,
                 full_name TEXT NOT NULL,
-                email TEXT UNIQUE NOT NULL,
+                email TEXT,
                 phone TEXT,
                 department TEXT NOT NULL,
                 college_name TEXT DEFAULT 'Sphoorthy Engineering College',
-                created_at TEXT
+                created_at TEXT,
+                updated_at TEXT
             );
 
             CREATE TABLE IF NOT EXISTS registrations (
@@ -280,6 +311,33 @@ class DatabaseManager:
                 value TEXT NOT NULL,
                 updated_at TEXT
             );
+
+            CREATE TABLE IF NOT EXISTS daily_settlements (
+                id TEXT PRIMARY KEY,
+                event_id TEXT,
+                settlement_date TEXT NOT NULL,
+                total_online_amount REAL NOT NULL DEFAULT 0,
+                total_cash_amount REAL NOT NULL DEFAULT 0,
+                total_tickets_issued INTEGER NOT NULL DEFAULT 0,
+                total_amount REAL NOT NULL DEFAULT 0,
+                is_settled INTEGER NOT NULL DEFAULT 0,
+                settled_at TEXT,
+                settled_by TEXT,
+                receiver_name TEXT,
+                bank_name TEXT,
+                account_number TEXT,
+                ifsc_code TEXT,
+                transaction_id TEXT,
+                transaction_date TEXT,
+                notes TEXT,
+                authorized_by_name TEXT,
+                receipt_number TEXT UNIQUE,
+                created_at TEXT NOT NULL,
+                updated_at TEXT
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_daily_settlements_date
+                ON daily_settlements (settlement_date, event_id);
         """)
         additive_columns = {
             "profiles": {
@@ -295,6 +353,10 @@ class DatabaseManager:
             },
             "tickets": {
                 "public_access_token_hash": "TEXT",
+            },
+            "student_directory": {
+                "updated_at": "TEXT",
+                "college_name": "TEXT DEFAULT 'Sphoorthy Engineering College'",
             },
         }
         for table, columns in additive_columns.items():
@@ -438,7 +500,7 @@ class DatabaseManager:
         """Executes a SELECT query and returns a list of dictionaries."""
         active_connection = getattr(self._transaction_local, "connection", None)
         if active_connection is not None:
-            q = query.replace("::boolean", "").replace("%s", "?") if self.is_sqlite else query.replace("?", "%s")
+            q = query.replace("::boolean", "").replace("::text", "").replace("%s", "?") if self.is_sqlite else query.replace("?", "%s")
             cursor = (
                 active_connection.cursor()
                 if self.is_sqlite
@@ -452,7 +514,7 @@ class DatabaseManager:
 
         if self.is_sqlite:
             with self._lock:
-                q = query.replace("::boolean", "").replace("%s", "?")
+                q = query.replace("::boolean", "").replace("::text", "").replace("%s", "?")
                 cursor = self.sqlite_conn.cursor()
                 try:
                     cursor.execute(q, params)
@@ -479,7 +541,7 @@ class DatabaseManager:
         """Executes INSERT, UPDATE, DELETE query and returns modified count / returning row."""
         active_connection = getattr(self._transaction_local, "connection", None)
         if active_connection is not None:
-            q = query.replace("::boolean", "").replace("%s", "?") if self.is_sqlite else query.replace("?", "%s")
+            q = query.replace("::boolean", "").replace("::text", "").replace("%s", "?") if self.is_sqlite else query.replace("?", "%s")
             cursor = (
                 active_connection.cursor()
                 if self.is_sqlite
@@ -495,7 +557,7 @@ class DatabaseManager:
 
         if self.is_sqlite:
             with self._lock:
-                q = query.replace("::boolean", "").replace("%s", "?")
+                q = query.replace("::boolean", "").replace("::text", "").replace("%s", "?")
                 cursor = self.sqlite_conn.cursor()
                 try:
                     cursor.execute(q, params)
@@ -525,7 +587,7 @@ class DatabaseManager:
         """
         active_connection = getattr(self._transaction_local, "connection", None)
         if active_connection is not None:
-            q = update_query.replace("::boolean", "").replace("%s", "?") if self.is_sqlite else update_query.replace("?", "%s")
+            q = update_query.replace("::boolean", "").replace("::text", "").replace("%s", "?") if self.is_sqlite else update_query.replace("?", "%s")
             cursor = (
                 active_connection.cursor()
                 if self.is_sqlite
@@ -542,7 +604,7 @@ class DatabaseManager:
 
         if self.is_sqlite:
             with self._lock:
-                q = update_query.replace("::boolean", "").replace("%s", "?")
+                q = update_query.replace("::boolean", "").replace("::text", "").replace("%s", "?")
                 cursor = self.sqlite_conn.cursor()
                 try:
                     cursor.execute(q, params)

@@ -1,6 +1,28 @@
 import csv
 import io
+import uuid
+from datetime import datetime, timezone, date, timedelta
 from app.db import db
+
+
+def _to_ist_date(iso_str: str) -> str:
+    """Convert an ISO UTC timestamp string to IST YYYY-MM-DD date string."""
+    if not iso_str:
+        return ""
+    try:
+        dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+        # IST = UTC+5:30
+        ist = dt.utctimetuple()
+        # Simple offset conversion
+        from datetime import timezone as tz
+        import datetime as _dt
+        IST = _dt.timezone(_dt.timedelta(hours=5, minutes=30))
+        dt_ist = dt.astimezone(IST)
+        return dt_ist.strftime("%Y-%m-%d")
+    except Exception:
+        # fallback: use first 10 chars
+        return iso_str[:10]
+
 
 class ReportService:
     @staticmethod
@@ -207,5 +229,274 @@ class ReportService:
             "SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT %s",
             (limit,)
         )
+
+    # ─────────────────────────────────────────────────────────────
+    # NEW: Daily Revenue Report (per-event, per-day, per-channel)
+    # ─────────────────────────────────────────────────────────────
+    @staticmethod
+    def get_daily_revenue_report(event_id: str, date_from: str = None, date_to: str = None):
+        """
+        Returns daily revenue rows for an event, split by ONLINE and CASH channels.
+        Each row: { date, channel, tickets_issued, amount, cumulative_tickets, cumulative_amount }
+        Also adds a grand totals object at the end.
+        """
+        # --- ONLINE rows: from payments table (PAID or CAPTURED status) ---
+        online_where = "WHERE r.event_id::text = %s AND (p.status = 'PAID' OR p.status = 'CAPTURED')"
+        online_params = [event_id]
+        cash_where = "WHERE oc.event_id::text = %s"
+        cash_params = [event_id]
+
+        if date_from:
+            online_where += " AND substr(p.created_at::text, 1, 10) >= %s"
+            online_params.append(date_from)
+            cash_where += " AND substr(oc.created_at::text, 1, 10) >= %s"
+            cash_params.append(date_from)
+        if date_to:
+            online_where += " AND substr(p.created_at::text, 1, 10) <= %s"
+            online_params.append(date_to)
+            cash_where += " AND substr(oc.created_at::text, 1, 10) <= %s"
+            cash_params.append(date_to)
+
+        online_rows = db.execute_query(
+            f"""SELECT substr(p.created_at::text, 1, 10) as day,
+                       COUNT(DISTINCT t.id) as tickets_issued,
+                       COALESCE(SUM(p.amount), 0) as amount
+                FROM payments p
+                JOIN registrations r ON p.registration_id = r.id
+                LEFT JOIN tickets t ON r.id = t.registration_id
+                {online_where}
+                GROUP BY substr(p.created_at::text, 1, 10)
+                ORDER BY day ASC""",
+            tuple(online_params)
+        )
+
+        # --- CASH rows: from offline_collections ---
+        cash_rows = db.execute_query(
+            f"""SELECT substr(oc.created_at::text, 1, 10) as day,
+                       COUNT(DISTINCT t.id) as tickets_issued,
+                       COALESCE(SUM(oc.amount), 0) as amount
+                FROM offline_collections oc
+                JOIN registrations r ON oc.registration_id = r.id
+                LEFT JOIN tickets t ON r.id = t.registration_id
+                {cash_where}
+                GROUP BY substr(oc.created_at::text, 1, 10)
+                ORDER BY day ASC""",
+            tuple(cash_params)
+        )
+
+        # Build cumulative running totals for each channel
+        def add_cumulative(rows, channel):
+            cum_tickets = 0
+            cum_amount = 0.0
+            result = []
+            for row in rows:
+                cum_tickets += int(row.get("tickets_issued") or 0)
+                cum_amount += float(row.get("amount") or 0)
+                result.append({
+                    "date": row["day"],
+                    "channel": channel,
+                    "tickets_issued": int(row.get("tickets_issued") or 0),
+                    "amount": float(row.get("amount") or 0),
+                    "cumulative_tickets": cum_tickets,
+                    "cumulative_amount": round(cum_amount, 2),
+                })
+            return result
+
+        online_data = add_cumulative(online_rows, "ONLINE")
+        cash_data = add_cumulative(cash_rows, "CASH")
+
+        # Grand totals
+        total_online_tickets = sum(r["tickets_issued"] for r in online_data)
+        total_online_amount = sum(r["amount"] for r in online_data)
+        total_cash_tickets = sum(r["tickets_issued"] for r in cash_data)
+        total_cash_amount = sum(r["amount"] for r in cash_data)
+
+        return {
+            "online": online_data,
+            "cash": cash_data,
+            "totals": {
+                "total_online_tickets": total_online_tickets,
+                "total_online_amount": round(total_online_amount, 2),
+                "total_cash_tickets": total_cash_tickets,
+                "total_cash_amount": round(total_cash_amount, 2),
+                "total_tickets": total_online_tickets + total_cash_tickets,
+                "total_amount": round(total_online_amount + total_cash_amount, 2),
+            }
+        }
+
+    # ─────────────────────────────────────────────────────────────
+    # NEW: Per-Collector Daily Breakdown
+    # ─────────────────────────────────────────────────────────────
+    @staticmethod
+    def get_daily_collector_breakdown(event_id: str, target_date: str = None):
+        """
+        Returns per-collector cash breakdown for the given event.
+        If target_date is provided, filters to that single day.
+        Returns list of { collector_id, collector_name, collector_email, date, tickets_count, total_cash }
+        """
+        where = "WHERE oc.event_id::text = %s"
+        params = [event_id]
+        if target_date:
+            where += " AND substr(oc.created_at::text, 1, 10) = %s"
+            params.append(target_date)
+
+        rows = db.execute_query(
+            f"""SELECT substr(oc.created_at::text, 1, 10) as day,
+                       oc.collector_id,
+                       COALESCE(MAX(p.full_name), 'Unknown') as collector_name,
+                       COALESCE(MAX(p.email), '') as collector_email,
+                       COUNT(oc.id) as tickets_count,
+                       COALESCE(SUM(oc.amount), 0) as total_cash
+                FROM offline_collections oc
+                LEFT JOIN profiles p ON oc.collector_id::text = p.id::text
+                {where}
+                GROUP BY substr(oc.created_at::text, 1, 10), oc.collector_id
+                ORDER BY day ASC, total_cash DESC""",
+            tuple(params)
+        )
+
+        return [
+            {
+                "date": r["day"],
+                "collector_id": r["collector_id"],
+                "collector_name": r.get("collector_name") or "Unknown",
+                "collector_email": r.get("collector_email") or "",
+                "tickets_count": int(r.get("tickets_count") or 0),
+                "total_cash": float(r.get("total_cash") or 0),
+            }
+            for r in rows
+        ]
+
+    # ─────────────────────────────────────────────────────────────
+    # NEW: Settlement Summary (list of dates + settlement status)
+    # ─────────────────────────────────────────────────────────────
+    @staticmethod
+    def get_settlement_list(event_id: str = None):
+        """
+        Returns all existing settlement records, optionally filtered by event_id.
+        Also enriches each with event title where possible.
+        """
+        if event_id:
+            rows = db.execute_query(
+                """SELECT ds.*, e.title as event_title
+                   FROM daily_settlements ds
+                   LEFT JOIN events e ON ds.event_id = e.id::text
+                   WHERE ds.event_id = %s
+                   ORDER BY ds.settlement_date DESC""",
+                (event_id,)
+            )
+        else:
+            rows = db.execute_query(
+                """SELECT ds.*, e.title as event_title
+                   FROM daily_settlements ds
+                   LEFT JOIN events e ON ds.event_id = e.id::text
+                   ORDER BY ds.settlement_date DESC"""
+            )
+        return rows or []
+
+    @staticmethod
+    def get_settlement_summary(event_id: str = None):
+        """Alias for get_settlement_list returning settlement records and summaries."""
+        return ReportService.get_settlement_list(event_id=event_id)
+
+    @staticmethod
+    def get_settlement_by_id(settlement_id: str):
+        """Return a single settlement with event + settler profile details."""
+        row = db.execute_one(
+            """SELECT ds.*, e.title as event_title, p.full_name as settler_name, p.email as settler_email
+               FROM daily_settlements ds
+               LEFT JOIN events e ON ds.event_id = e.id::text
+               LEFT JOIN profiles p ON ds.settled_by = p.id::text
+               WHERE ds.id = %s""",
+            (settlement_id,)
+        )
+        return row
+
+    @staticmethod
+    def create_settlement(
+        event_id,
+        settlement_date: str,
+        total_online_amount: float,
+        total_cash_amount: float,
+        total_tickets_issued: int,
+        created_by: str,
+    ):
+        """Create a new (unsettled) settlement record for a date."""
+        # Prevent duplicate for same event+date
+        if event_id:
+            existing = db.execute_one(
+                "SELECT id FROM daily_settlements WHERE settlement_date = %s AND event_id = %s",
+                (settlement_date, event_id)
+            )
+        else:
+            existing = db.execute_one(
+                "SELECT id FROM daily_settlements WHERE settlement_date = %s AND event_id IS NULL",
+                (settlement_date,)
+            )
+        if existing:
+            raise ValueError(f"A settlement record for {settlement_date} already exists.")
+
+        # Generate receipt number: RCPT-YYYYMMDD-NNN
+        date_part = settlement_date.replace("-", "")
+        count_row = db.execute_one(
+            "SELECT COUNT(*) as cnt FROM daily_settlements WHERE substr(settlement_date::text, 1, 7) = %s",
+            (settlement_date[:7],)
+        )
+        seq = (count_row["cnt"] if count_row else 0) + 1
+        receipt_number = f"RCPT-{date_part}-{seq:03d}"
+        while db.execute_one("SELECT id FROM daily_settlements WHERE receipt_number = %s", (receipt_number,)):
+            seq += 1
+            receipt_number = f"RCPT-{date_part}-{seq:03d}"
+
+        sid = str(uuid.uuid4())
+        now = datetime.now(timezone.utc).isoformat()
+        total_amount = round(total_online_amount + total_cash_amount, 2)
+
+        db.execute_write(
+            """INSERT INTO daily_settlements
+               (id, event_id, settlement_date, total_online_amount, total_cash_amount,
+                total_tickets_issued, total_amount, is_settled, receipt_number, created_at, updated_at)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+            (sid, event_id, settlement_date, total_online_amount, total_cash_amount,
+             total_tickets_issued, total_amount, False, receipt_number, now, now)
+        )
+        return db.execute_one("SELECT * FROM daily_settlements WHERE id = %s", (sid,))
+
+    @staticmethod
+    def mark_settlement_settled(
+        settlement_id: str,
+        settled_by: str,
+        receiver_name: str,
+        bank_name: str,
+        account_number: str,
+        ifsc_code: str,
+        transaction_id: str,
+        transaction_date: str,
+        notes: str,
+        authorized_by_name: str,
+    ):
+        """Mark a settlement as settled with bank/transaction details."""
+        existing = db.execute_one(
+            "SELECT id, is_settled FROM daily_settlements WHERE id = %s", (settlement_id,)
+        )
+        if not existing:
+            raise ValueError("Settlement record not found.")
+        if existing["is_settled"]:
+            raise ValueError("This settlement has already been marked as settled.")
+
+        now = datetime.now(timezone.utc).isoformat()
+        db.execute_write(
+            """UPDATE daily_settlements
+               SET is_settled = %s, settled_at = %s, settled_by = %s,
+                   receiver_name = %s, bank_name = %s, account_number = %s,
+                   ifsc_code = %s, transaction_id = %s, transaction_date = %s,
+                   notes = %s, authorized_by_name = %s, updated_at = %s
+               WHERE id = %s""",
+            (True, now, settled_by, receiver_name, bank_name, account_number,
+             ifsc_code, transaction_id, transaction_date,
+             notes, authorized_by_name, now, settlement_id)
+        )
+        return ReportService.get_settlement_by_id(settlement_id)
+
 
 report_service = ReportService()
