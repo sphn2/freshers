@@ -62,6 +62,8 @@ def create_app():
     app.register_blueprint(email_outbox_bp)
 
     @app.route("/api/v1/health", methods=["GET"])
+    @app.route("/api/health", methods=["GET"])
+    @app.route("/health", methods=["GET"])
     def health_check():
         return jsonify({
             "status": "HEALTHY",

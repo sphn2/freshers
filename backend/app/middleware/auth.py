@@ -23,7 +23,7 @@ def _get_signing_key(jwks_url: str, kid: str):
 
 @lru_cache(maxsize=8)
 def _get_jwks_client(jwks_url: str):
-    return jwt.PyJWKClient(jwks_url, timeout=3)
+    return jwt.PyJWKClient(jwks_url, timeout=10)
 
 
 def _decode_supabase_token(token: str) -> dict:

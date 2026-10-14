@@ -33,58 +33,63 @@ class DatabaseManager:
             if not self.conn_str:
                 raise RuntimeError("DATABASE_URL is required when SQLite is disabled.")
             try:
-                conn = psycopg2.connect(self.conn_str, connect_timeout=3)
-                with conn.cursor() as cur:
-                    cur.execute("""
-                        CREATE TABLE IF NOT EXISTS system_settings (
-                            key TEXT PRIMARY KEY,
-                            value TEXT NOT NULL,
-                            updated_at TEXT
-                        );
-                        INSERT INTO system_settings (key, value, updated_at)
-                        VALUES ('convenience_fee_enabled', 'true', NOW()::text)
-                        ON CONFLICT(key) DO NOTHING;
-                        INSERT INTO system_settings (key, value, updated_at)
-                        VALUES ('convenience_fee_amount', '3.79', NOW()::text)
-                        ON CONFLICT(key) DO NOTHING;
-                        ALTER TABLE student_directory ALTER COLUMN email DROP NOT NULL;
-                        ALTER TABLE student_directory DROP CONSTRAINT IF EXISTS student_directory_email_key;
-                        ALTER TABLE student_directory ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
-                        ALTER TABLE student_directory ADD COLUMN IF NOT EXISTS college_name TEXT DEFAULT 'Sphoorthy Engineering College';
+                conn = psycopg2.connect(self.conn_str, connect_timeout=10)
+                try:
+                    with conn.cursor() as cur:
+                        cur.execute("""
+                            CREATE TABLE IF NOT EXISTS system_settings (
+                                key TEXT PRIMARY KEY,
+                                value TEXT NOT NULL,
+                                updated_at TEXT
+                            );
+                            INSERT INTO system_settings (key, value, updated_at)
+                            VALUES ('convenience_fee_enabled', 'true', NOW()::text)
+                            ON CONFLICT(key) DO NOTHING;
+                            INSERT INTO system_settings (key, value, updated_at)
+                            VALUES ('convenience_fee_amount', '3.79', NOW()::text)
+                            ON CONFLICT(key) DO NOTHING;
+                            ALTER TABLE student_directory ALTER COLUMN email DROP NOT NULL;
+                            ALTER TABLE student_directory DROP CONSTRAINT IF EXISTS student_directory_email_key;
+                            ALTER TABLE student_directory ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+                            ALTER TABLE student_directory ADD COLUMN IF NOT EXISTS college_name TEXT DEFAULT 'Sphoorthy Engineering College';
 
-                        CREATE TABLE IF NOT EXISTS daily_settlements (
-                            id TEXT PRIMARY KEY,
-                            event_id TEXT,
-                            settlement_date TEXT NOT NULL,
-                            total_online_amount REAL NOT NULL DEFAULT 0,
-                            total_cash_amount REAL NOT NULL DEFAULT 0,
-                            total_tickets_issued INTEGER NOT NULL DEFAULT 0,
-                            total_amount REAL NOT NULL DEFAULT 0,
-                            is_settled BOOLEAN NOT NULL DEFAULT FALSE,
-                            settled_at TEXT,
-                            settled_by TEXT,
-                            receiver_name TEXT,
-                            bank_name TEXT,
-                            account_number TEXT,
-                            ifsc_code TEXT,
-                            transaction_id TEXT,
-                            transaction_date TEXT,
-                            notes TEXT,
-                            authorized_by_name TEXT,
-                            receipt_number TEXT UNIQUE,
-                            created_at TEXT NOT NULL,
-                            updated_at TEXT
-                        );
-                        CREATE INDEX IF NOT EXISTS idx_daily_settlements_date
-                            ON daily_settlements (settlement_date, event_id);
-                    """)
-                    conn.commit()
-                conn.close()
+                            CREATE TABLE IF NOT EXISTS daily_settlements (
+                                id TEXT PRIMARY KEY,
+                                event_id TEXT,
+                                settlement_date TEXT NOT NULL,
+                                total_online_amount REAL NOT NULL DEFAULT 0,
+                                total_cash_amount REAL NOT NULL DEFAULT 0,
+                                total_tickets_issued INTEGER NOT NULL DEFAULT 0,
+                                total_amount REAL NOT NULL DEFAULT 0,
+                                is_settled BOOLEAN NOT NULL DEFAULT FALSE,
+                                settled_at TEXT,
+                                settled_by TEXT,
+                                receiver_name TEXT,
+                                bank_name TEXT,
+                                account_number TEXT,
+                                ifsc_code TEXT,
+                                transaction_id TEXT,
+                                transaction_date TEXT,
+                                notes TEXT,
+                                authorized_by_name TEXT,
+                                receipt_number TEXT UNIQUE,
+                                created_at TEXT NOT NULL,
+                                updated_at TEXT
+                            );
+                            CREATE INDEX IF NOT EXISTS idx_daily_settlements_date
+                                ON daily_settlements (settlement_date, event_id);
+                        """)
+                        conn.commit()
+                except Exception as ddl_err:
+                    import logging
+                    logging.warning("Non-fatal bootstrap DDL notice: %s", ddl_err)
+                finally:
+                    conn.close()
                 return
             except psycopg2.Error as exc:
-                raise RuntimeError(
-                    "PostgreSQL connection failed; refusing to fall back to SQLite."
-                ) from exc
+                import logging
+                logging.error("PostgreSQL initial ping failed: %s", exc)
+                return
 
         db_path = config.SQLITE_DATABASE_PATH
         if db_path != ":memory:":
@@ -458,7 +463,7 @@ class DatabaseManager:
                 self._lock.release()
                 raise
         else:
-            connection = psycopg2.connect(self.conn_str, connect_timeout=3)
+            connection = psycopg2.connect(self.conn_str, connect_timeout=10)
 
         self._transaction_local.connection = connection
         try:
@@ -524,7 +529,7 @@ class DatabaseManager:
                     cursor.close()
         else:
             q = query.replace("?", "%s")
-            conn = psycopg2.connect(self.conn_str, connect_timeout=3)
+            conn = psycopg2.connect(self.conn_str, connect_timeout=10)
             try:
                 with conn.cursor(cursor_factory=RealDictCursor) as cursor:
                     cursor.execute(q, params)
@@ -568,7 +573,7 @@ class DatabaseManager:
                     cursor.close()
         else:
             q = query.replace("?", "%s")
-            conn = psycopg2.connect(self.conn_str, connect_timeout=3)
+            conn = psycopg2.connect(self.conn_str, connect_timeout=10)
             try:
                 with conn.cursor(cursor_factory=RealDictCursor) as cursor:
                     cursor.execute(q, params)
@@ -617,7 +622,7 @@ class DatabaseManager:
                     cursor.close()
         else:
             q = update_query.replace("?", "%s")
-            conn = psycopg2.connect(self.conn_str, connect_timeout=3)
+            conn = psycopg2.connect(self.conn_str, connect_timeout=10)
             try:
                 with conn.cursor(cursor_factory=RealDictCursor) as cursor:
                     cursor.execute(q, params)

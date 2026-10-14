@@ -1,4 +1,5 @@
 import os
+import hashlib
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -13,8 +14,18 @@ class Config:
     ENV: str = os.getenv("FLASK_ENV", "development")
     DEBUG: bool = os.getenv("FLASK_DEBUG", "false").lower() == "true"
     TESTING: bool = os.getenv("TESTING", "false").lower() == "true"
-    SECRET_KEY: str = os.getenv("SECRET_KEY", "")
-    TICKET_SECRET_KEY: str = os.getenv("TICKET_SECRET_KEY", "")
+
+    _supabase_secret: str = os.getenv(
+        "SUPABASE_SECRET_KEY", os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    )
+    SECRET_KEY: str = os.getenv("SECRET_KEY") or (
+        hashlib.sha256((_supabase_secret + ":sphoorthy_secret_key").encode()).hexdigest()
+        if _supabase_secret else ""
+    )
+    TICKET_SECRET_KEY: str = os.getenv("TICKET_SECRET_KEY") or (
+        hashlib.sha256((_supabase_secret + ":sphoorthy_ticket_key").encode()).hexdigest()
+        if _supabase_secret else ""
+    )
     SEED_DEMO_DATA: bool = os.getenv("SEED_DEMO_DATA", "false").lower() in ("true", "1")
 
     # Database & Supabase
@@ -27,10 +38,12 @@ class Config:
     )
     DATABASE_URL: str = os.getenv("DATABASE_URL", "")
     SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
-    SUPABASE_SECRET_KEY: str = os.getenv(
-        "SUPABASE_SECRET_KEY", os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    SUPABASE_SECRET_KEY: str = _supabase_secret
+    SUPABASE_JWKS_URL: str = os.getenv(
+        "SUPABASE_JWKS_URL",
+        f"{os.getenv('SUPABASE_URL', '').rstrip('/')}/auth/v1/.well-known/jwks.json"
+        if os.getenv("SUPABASE_URL") else ""
     )
-    SUPABASE_JWKS_URL: str = os.getenv("SUPABASE_JWKS_URL", "")
     # HS256 is retained only for Supabase projects configured for symmetric JWTs.
     SUPABASE_JWT_SECRET: str = os.getenv("SUPABASE_JWT_SECRET", "")
 
@@ -49,8 +62,16 @@ class Config:
     EMAIL_OUTBOX_WORKER_SECRET: str = os.getenv("EMAIL_OUTBOX_WORKER_SECRET", "")
 
     # Client Web URL
-    APP_URL: str = os.getenv("APP_URL", "http://localhost:3000")
-    ALLOWED_ORIGINS: str = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000")
+    APP_URL: str = os.getenv(
+        "APP_URL",
+        "https://freshers.rudvay.tech" if os.getenv("FLASK_ENV", "").lower() == "production" else "http://localhost:3000"
+    )
+    ALLOWED_ORIGINS: str = os.getenv(
+        "ALLOWED_ORIGINS",
+        "https://freshers.rudvay.tech,https://freshers-nine.vercel.app"
+        if os.getenv("FLASK_ENV", "").lower() == "production"
+        else "http://localhost:3000"
+    )
     RATE_LIMIT_PER_MINUTE: int = int(os.getenv("RATE_LIMIT_PER_MINUTE", "60"))
 
     @property
@@ -65,17 +86,13 @@ class Config:
         if not self.is_production:
             return
 
+        import logging
+
+        # Critical: Database and Auth are mandatory for API operation
         required = {
-            "SECRET_KEY": self.SECRET_KEY,
-            "TICKET_SECRET_KEY": self.TICKET_SECRET_KEY,
             "DATABASE_URL": self.DATABASE_URL,
             "SUPABASE_URL": self.SUPABASE_URL,
             "SUPABASE_SECRET_KEY": self.SUPABASE_SECRET_KEY,
-            "RAZORPAY_KEY_ID": self.RAZORPAY_KEY_ID,
-            "RAZORPAY_KEY_SECRET": self.RAZORPAY_KEY_SECRET,
-            "RAZORPAY_WEBHOOK_SECRET": self.RAZORPAY_WEBHOOK_SECRET,
-            "SMTP_USERNAME": self.SMTP_USERNAME,
-            "SMTP_PASSWORD": self.SMTP_PASSWORD,
         }
         missing = [name for name, value in required.items() if not value]
         if missing:
@@ -88,9 +105,9 @@ class Config:
             raise RuntimeError("Flask debug mode is not allowed in production.")
         if self.SEED_DEMO_DATA:
             raise RuntimeError("Demo data seeding is not allowed in production.")
-        if len(self.SECRET_KEY.encode("utf-8")) < 32:
+        if not self.SECRET_KEY or len(self.SECRET_KEY.encode("utf-8")) < 32:
             raise RuntimeError("SECRET_KEY must contain at least 32 bytes.")
-        if len(self.TICKET_SECRET_KEY.encode("utf-8")) < 32:
+        if not self.TICKET_SECRET_KEY or len(self.TICKET_SECRET_KEY.encode("utf-8")) < 32:
             raise RuntimeError("TICKET_SECRET_KEY must contain at least 32 bytes.")
         if not (self.SUPABASE_JWKS_URL or self.SUPABASE_JWT_SECRET):
             raise RuntimeError("Configure Supabase JWT verification before startup.")
@@ -105,5 +122,17 @@ class Config:
         origins = [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",") if origin.strip()]
         if not origins or any(not origin.startswith("https://") for origin in origins):
             raise RuntimeError("ALLOWED_ORIGINS must contain HTTPS origins only in production.")
+
+        # Non-critical integrations: log warning instead of aborting the serverless function
+        optional = {
+            "RAZORPAY_KEY_ID": self.RAZORPAY_KEY_ID,
+            "RAZORPAY_KEY_SECRET": self.RAZORPAY_KEY_SECRET,
+            "RAZORPAY_WEBHOOK_SECRET": self.RAZORPAY_WEBHOOK_SECRET,
+            "SMTP_USERNAME": self.SMTP_USERNAME,
+            "SMTP_PASSWORD": self.SMTP_PASSWORD,
+        }
+        missing_optional = [name for name, value in optional.items() if not value]
+        if missing_optional:
+            logging.warning("Optional integrations not configured in production: %s", ", ".join(missing_optional))
 
 config = Config()

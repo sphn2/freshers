@@ -3,7 +3,8 @@
   "services": {
     "backend": {
       "root": "backend",
-      "framework": "flask"
+      "framework": "flask",
+      "entrypoint": "wsgi:app"
     },
     "frontend": {
       "root": "frontend",

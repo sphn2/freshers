@@ -34,7 +34,7 @@ def test_jwks_client_is_reused(monkeypatch):
 
     assert first is second
     assert clients == [
-        ("https://example.supabase.co/auth/v1/.well-known/jwks.json", 3)
+        ("https://example.supabase.co/auth/v1/.well-known/jwks.json", 10)
     ]
 
 

@@ -56,8 +56,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const response = await fetch(`${getApiBaseUrl()}/auth/me`, { headers: { Authorization: `Bearer ${accessToken}` } });
         if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          throw new Error(errData?.error || "Your account could not be authorized for this platform.");
+          const errData = await response.json().catch(() => null);
+          const errorMsg =
+            errData?.error ||
+            errData?.message ||
+            errData?.details ||
+            (response.status >= 500
+              ? `Backend service error (${response.status}). Please verify API service status.`
+              : "Your account could not be authorized for this platform.");
+          throw new Error(errorMsg);
         }
         const data = await response.json();
         const rolesList: Role[] = Array.isArray(data.roles) ? (data.roles as Role[]) : [];
