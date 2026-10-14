@@ -4,7 +4,10 @@ import uuid
 import re
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
-import openpyxl
+try:
+    import openpyxl
+except ImportError:
+    openpyxl = None
 
 from app.db import db
 from app.services.audit_service import audit_service
@@ -99,6 +102,8 @@ class StudentDirectoryService:
 
     @staticmethod
     def parse_excel_stream(file_stream: io.BytesIO) -> List[Dict[str, Any]]:
+        if openpyxl is None:
+            raise ValueError("Excel file processing is currently unavailable (openpyxl package missing).")
         try:
             wb = openpyxl.load_workbook(file_stream, data_only=True)
         except Exception as e:
