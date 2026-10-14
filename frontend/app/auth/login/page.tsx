@@ -29,7 +29,7 @@ function StaffLoginContent() {
       if (assignedRole === "GATE_STAFF") router.push("/scanner/gate");
       else if (assignedRole === "FOOD_STAFF") router.push("/scanner/food");
       else if (assignedRole === "OFFLINE_COLLECTOR") router.push("/offline");
-      else if (assignedRole === "ADMIN" || assignedRole === "EVENT_MANAGER") router.push("/admin");
+      else if (assignedRole === "SUPER_ADMIN" || assignedRole === "ADMIN" || assignedRole === "EVENT_MANAGER") router.push("/admin");
       else router.push(redirectUrl);
     } catch (reason: unknown) {
       setError(errorMessage(reason, "Sign in failed. Check your credentials and try again."));
