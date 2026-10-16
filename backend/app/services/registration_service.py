@@ -118,7 +118,15 @@ class RegistrationService:
                         "Please use the same email address entered previously to resume payment."
                     )
                 elif email_match:
-                    raise ValueError("A registration already exists with this email address for this event.")
+                    if email_match["status"] not in ("PENDING_PAYMENT", "CANCELLED"):
+                        raise ValueError("A confirmed ticket already exists for this email address for this event.")
+                    existing_email_ticket = db.execute_one(
+                        "SELECT id FROM tickets WHERE registration_id = %s",
+                        (email_match["id"],),
+                    )
+                    if existing_email_ticket:
+                        raise ValueError("A confirmed ticket already exists for this email address for this event.")
+                    previous = email_match
                 else:
                     previous = matching[0]
 
