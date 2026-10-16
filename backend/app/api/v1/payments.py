@@ -33,7 +33,7 @@ def _can_access_registration(registration_id: str, token: str | None = None) -> 
     )
 
 @payments_bp.route("/payments/create-order", methods=["POST"])
-@rate_limit(10, 60)
+@rate_limit(60, 60)
 def create_order():
     try:
         auth_middleware()
@@ -56,7 +56,7 @@ def create_order():
         return internal_error("creating a payment order")
 
 @payments_bp.route("/payments/verify", methods=["POST"])
-@rate_limit(10, 60)
+@rate_limit(60, 60)
 def verify_payment():
     try:
         auth_middleware()
@@ -99,3 +99,17 @@ def razorpay_webhook():
         return jsonify({"error": str(e)}), 400
     except Exception:
         return internal_error("processing a Razorpay webhook")
+
+@payments_bp.route("/webhooks/cashfree", methods=["POST"])
+@rate_limit(120, 60)
+def cashfree_webhook():
+    try:
+        raw_body = request.get_data()
+        signature = request.headers.get("x-webhook-signature")
+        timestamp = request.headers.get("x-webhook-timestamp")
+        res = payment_service.process_cashfree_webhook(raw_body, signature, timestamp)
+        return jsonify(res), 200
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception:
+        return internal_error("processing a Cashfree webhook")

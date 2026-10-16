@@ -71,6 +71,7 @@ class CashfreeGateway(BasePaymentGateway):
             phone_digits = "".join(filter(str.isdigit, raw_phone))
             phone = phone_digits[-10:] if len(phone_digits) >= 10 else "9999999999"
 
+            notify_url = f"{config.APP_URL.rstrip('/')}/api/v1/webhooks/cashfree"
             body = {
                 "order_id": order_id,
                 "order_amount": round(total_amount, 2),
@@ -83,6 +84,7 @@ class CashfreeGateway(BasePaymentGateway):
                 },
                 "order_meta": {
                     "return_url": return_url,
+                    "notify_url": notify_url,
                 },
                 "order_note": f"Registration {registration_id}",
             }
@@ -168,6 +170,26 @@ class CashfreeGateway(BasePaymentGateway):
             raise ValueError("Unable to confirm payment status with Cashfree.") from exc
 
         order_status = order_data.get("order_status")
+        # Retry with short backoff if status is ACTIVE (handles redirect timing lag before Cashfree confirms)
+        if order_status == "ACTIVE" and not current_app.config.get("TESTING"):
+            import time
+            for _ in range(2):
+                time.sleep(1.5)
+                try:
+                    retry_resp = requests.get(
+                        f"{base_url}/orders/{order_id}",
+                        headers=headers,
+                        timeout=10,
+                    )
+                    if retry_resp.status_code == 200:
+                        retry_data = retry_resp.json()
+                        if retry_data.get("order_status") == "PAID":
+                            order_data = retry_data
+                            order_status = "PAID"
+                            break
+                except Exception:
+                    pass
+
         if order_status != "PAID":
             raise ValueError(f"Payment is not confirmed. Cashfree status is '{order_status}'.")
 

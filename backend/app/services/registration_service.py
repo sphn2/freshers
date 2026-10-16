@@ -92,11 +92,36 @@ class RegistrationService:
                 (data.event_id, data.email.strip(), data.roll_number.strip()),
             )
             if matching:
-                previous = matching[0]
-                same_email = previous["email"].casefold() == data.email.strip().casefold()
-                same_roll = previous["roll_number"].casefold() == data.roll_number.strip().casefold()
-                if len(matching) != 1 or not (same_email and same_roll):
-                    raise ValueError("A registration already exists with this email address or roll number for this event.")
+                exact_match = next((
+                    m for m in matching
+                    if m["roll_number"].strip().casefold() == data.roll_number.strip().casefold()
+                    and m["email"].strip().casefold() == data.email.strip().casefold()
+                ), None)
+
+                roll_match = next((
+                    m for m in matching
+                    if m["roll_number"].strip().casefold() == data.roll_number.strip().casefold()
+                ), None)
+
+                email_match = next((
+                    m for m in matching
+                    if m["email"].strip().casefold() == data.email.strip().casefold()
+                ), None)
+
+                if exact_match:
+                    previous = exact_match
+                elif roll_match:
+                    if roll_match["status"] not in ("PENDING_PAYMENT", "CANCELLED"):
+                        raise ValueError("A confirmed ticket already exists for this student in this event.")
+                    raise ValueError(
+                        f"A pending registration already exists for roll number '{data.roll_number}'. "
+                        "Please use the same email address entered previously to resume payment."
+                    )
+                elif email_match:
+                    raise ValueError("A registration already exists with this email address for this event.")
+                else:
+                    previous = matching[0]
+
                 if previous["status"] not in ("PENDING_PAYMENT", "CANCELLED"):
                     raise ValueError("A confirmed ticket already exists for this student in this event.")
                 existing_ticket = db.execute_one(

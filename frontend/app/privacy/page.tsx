@@ -26,7 +26,7 @@ export default function PrivacyPolicyPage() {
           </div>
           <h1 className="editorial-title text-3xl sm:text-5xl text-white">Privacy Policy</h1>
           <p className="text-xs sm:text-sm text-[#e1ded3] max-w-2xl leading-relaxed">
-            Sphoorthy Engineering College & Rudvay Tech Pvt Ltd are committed to protecting your personal information and privacy rights during campus event registrations.
+            Sphoorthy Engineering College & Rudvay Tech are committed to protecting your personal information and privacy rights during campus event registrations.
           </p>
           <p className="text-[11px] font-mono text-amber-200/80 pt-2">Last updated: October 11, 2026</p>
         </div>
@@ -163,21 +163,21 @@ export default function PrivacyPolicyPage() {
 
           <div className="grid sm:grid-cols-3 gap-3 pt-2">
             <a
-              href="mailto:founder@rudvay.tech"
+              href="mailto:cherukuharsha321@gmail.com"
               className="p-3.5 rounded-xl bg-white/10 border border-white/10 hover:border-amber-300/50 hover:bg-white/15 transition-all text-xs space-y-1 block"
             >
               <Mail className="h-4 w-4 text-amber-300" />
               <div className="text-[10px] uppercase text-slate-400 font-extrabold">Email Support</div>
-              <div className="font-mono font-semibold text-amber-200 text-xs truncate">founder@rudvay.tech</div>
+              <div className="font-mono font-semibold text-amber-200 text-xs truncate">cherukuharsha321@gmail.com</div>
             </a>
 
             <a
-              href="tel:8179645560"
+              href="tel:9494610092"
               className="p-3.5 rounded-xl bg-white/10 border border-white/10 hover:border-amber-300/50 hover:bg-white/15 transition-all text-xs space-y-1 block"
             >
               <Phone className="h-4 w-4 text-amber-300" />
               <div className="text-[10px] uppercase text-slate-400 font-extrabold">Phone Helpline</div>
-              <div className="font-mono font-semibold text-amber-200 text-xs">+91 8179645560</div>
+              <div className="font-mono font-semibold text-amber-200 text-xs">+91 9494610092</div>
             </a>
 
             <a
@@ -189,7 +189,7 @@ export default function PrivacyPolicyPage() {
               <Globe className="h-4 w-4 text-amber-300" />
               <div className="text-[10px] uppercase text-slate-400 font-extrabold">Technology Partner</div>
               <div className="font-semibold text-amber-200 text-xs flex items-center gap-1">
-                Rudvay Tech Pvt Ltd <ExternalLink className="h-3 w-3" />
+                Rudvay Tech <ExternalLink className="h-3 w-3" />
               </div>
             </a>
           </div>

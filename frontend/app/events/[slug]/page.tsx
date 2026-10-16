@@ -48,14 +48,7 @@ export default function EventRegistrationPage() {
     void load();
   }, [slug]);
 
-  useEffect(() => {
-    if (typeof window !== "undefined" && !document.querySelector('script[src*="checkout.razorpay.com"]')) {
-      const script = document.createElement("script");
-      script.src = "https://checkout.razorpay.com/v1/checkout.js";
-      script.async = true;
-      document.head.appendChild(script);
-    }
-  }, []);
+
 
   // Autofill student data from directory when roll number changes
   useEffect(() => {

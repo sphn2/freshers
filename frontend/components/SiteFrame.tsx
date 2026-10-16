@@ -203,7 +203,7 @@ function SiteFrame({ children }: { children: React.ReactNode }) {
               <h4 className="text-xs font-extrabold text-[#d3a52b] uppercase tracking-widest">Contact Information</h4>
               <div className="space-y-2.5 text-xs text-[#c7bfb1]">
                 <a 
-                  href="tel:8179645560" 
+                  href="tel:9494610092" 
                   className="flex items-center gap-3 p-2.5 rounded-lg bg-white/5 border border-white/5 hover:border-[#d3a52b]/50 hover:bg-white/10 transition-all text-white group"
                 >
                   <div className="p-2 rounded-md bg-[#d3a52b]/15 text-[#d3a52b] group-hover:bg-[#d3a52b] group-hover:text-[#17221e] transition-colors shrink-0">
@@ -211,12 +211,12 @@ function SiteFrame({ children }: { children: React.ReactNode }) {
                   </div>
                   <div>
                     <span className="block text-[9px] text-[#a39a88] uppercase tracking-wider font-extrabold">Phone Number</span>
-                    <span className="font-mono font-bold text-xs tracking-wide">+91 8179645560</span>
+                    <span className="font-mono font-bold text-xs tracking-wide">+91 9494610092</span>
                   </div>
                 </a>
 
                 <a 
-                  href="mailto:founder@rudvay.tech" 
+                  href="mailto:cherukuharsha321@gmail.com" 
                   className="flex items-center gap-3 p-2.5 rounded-lg bg-white/5 border border-white/5 hover:border-[#d3a52b]/50 hover:bg-white/10 transition-all text-white group"
                 >
                   <div className="p-2 rounded-md bg-[#d3a52b]/15 text-[#d3a52b] group-hover:bg-[#d3a52b] group-hover:text-[#17221e] transition-colors shrink-0">
@@ -224,7 +224,7 @@ function SiteFrame({ children }: { children: React.ReactNode }) {
                   </div>
                   <div className="min-w-0">
                     <span className="block text-[9px] text-[#a39a88] uppercase tracking-wider font-extrabold">Official Email</span>
-                    <span className="font-mono font-medium text-xs truncate block text-amber-200/90">founder@rudvay.tech</span>
+                    <span className="font-mono font-medium text-xs truncate block text-amber-200/90">cherukuharsha321@gmail.com</span>
                   </div>
                 </a>
 
@@ -252,7 +252,7 @@ function SiteFrame({ children }: { children: React.ReactNode }) {
                       rel="noopener noreferrer"
                       className="font-bold text-white hover:text-emerald-300 text-xs tracking-wide flex items-center gap-1 group/link transition-colors"
                     >
-                      Rudvay Tech Pvt Ltd
+                      Rudvay Tech
                       <ExternalLink className="h-3 w-3 opacity-70 group-hover/link:opacity-100 transition-opacity" />
                     </a>
                     <p className="text-[10px] text-emerald-400/90 font-medium tracking-tight">Powering Intelligent Security</p>
@@ -298,7 +298,7 @@ function SiteFrame({ children }: { children: React.ReactNode }) {
                 rel="noopener noreferrer"
                 className="font-bold text-emerald-400 hover:text-emerald-300 hover:underline inline-flex items-center gap-1 transition-colors"
               >
-                Rudvay Tech Pvt Ltd
+                Rudvay Tech
                 <ExternalLink className="h-3 w-3" />
               </a>
             </p>

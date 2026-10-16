@@ -305,87 +305,92 @@ export default function PaymentCheckoutPage() {
         return;
       }
 
-      // Default: Razorpay
-      const loaded = await loadRazorpayScript();
-      if (!loaded) {
-        throw new Error("Razorpay SDK failed to load. Please check your internet connection.");
-      }
-      const Razorpay = window.Razorpay;
-      if (!Razorpay) {
-        throw new Error("Razorpay SDK did not initialize. Please refresh and try again.");
-      }
+      // Razorpay
+      if (activeGateway === "RAZORPAY") {
+        const loaded = await loadRazorpayScript();
+        if (!loaded) {
+          throw new Error("Razorpay SDK failed to load. Please check your internet connection.");
+        }
+        const Razorpay = window.Razorpay;
+        if (!Razorpay) {
+          throw new Error("Razorpay SDK did not initialize. Please refresh and try again.");
+        }
 
-      await new Promise<void>((resolve, reject) => {
-        const rzpOptions: RazorpayOptions = {
-          key: order.key_id,
-          amount: Math.round(order.amount * 100),
-          currency: order.currency || "INR",
-          name: "Sphoorthy Events",
-          description: "Fresher's Party Entry Ticket",
-          order_id: order.order_id,
-          handler: async function (response: {
-            razorpay_payment_id: string;
-            razorpay_order_id: string;
-            razorpay_signature: string;
-          }) {
-            try {
-              const verifyRes = await api.verifyPayment(
-                {
-                  registration_id: registrationId,
-                  razorpay_order_id: response.razorpay_order_id,
-                  razorpay_payment_id: response.razorpay_payment_id,
-                  razorpay_signature: response.razorpay_signature,
-                  gateway: "RAZORPAY",
-                },
-                registrationToken,
-              );
-
-              if (verifyRes.ticket_id) {
-                if (registrationToken) {
-                  try {
-                    sessionStorage.setItem(`ticket_token_${verifyRes.ticket_id}`, registrationToken);
-                    localStorage.setItem(`ticket_token_${verifyRes.ticket_id}`, registrationToken);
-                  } catch {}
-                }
-                if (typeof window !== "undefined") {
-                  window.scrollTo({ top: 0, left: 0, behavior: "instant" });
-                }
-                const enc = registrationToken ? encodeURIComponent(registrationToken) : "";
-                router.push(
-                  `/tickets/${verifyRes.ticket_id}${registrationToken ? `?token=${enc}#access_token=${enc}` : ""}`,
-                  { scroll: true },
+        await new Promise<void>((resolve, reject) => {
+          const rzpOptions: RazorpayOptions = {
+            key: order.key_id,
+            amount: Math.round(order.amount * 100),
+            currency: order.currency || "INR",
+            name: "Sphoorthy Events",
+            description: "Fresher's Party Entry Ticket",
+            order_id: order.order_id,
+            handler: async function (response: {
+              razorpay_payment_id: string;
+              razorpay_order_id: string;
+              razorpay_signature: string;
+            }) {
+              try {
+                const verifyRes = await api.verifyPayment(
+                  {
+                    registration_id: registrationId,
+                    razorpay_order_id: response.razorpay_order_id,
+                    razorpay_payment_id: response.razorpay_payment_id,
+                    razorpay_signature: response.razorpay_signature,
+                    gateway: "RAZORPAY",
+                  },
+                  registrationToken,
                 );
-                resolve();
-              } else {
-                reject(new Error("Payment verified but ticket generation failed."));
-              }
-            } catch (err: unknown) {
-              reject(new Error(errorMessage(err, "Server-side payment verification failed.")));
-            }
-          },
-          prefill: {
-            name: "",
-            email: "",
-          },
-          notes: {
-            registration_id: registrationId,
-          },
-          theme: {
-            color: "#245d4e",
-          },
-          modal: {
-            ondismiss: function () {
-              reject(new Error("Payment cancelled by user."));
-            },
-          },
-        };
 
-        const rzp = new Razorpay(rzpOptions);
-        rzp.on("payment.failed", function (response) {
-          reject(new Error(response.error?.description || "Payment failed."));
+                if (verifyRes.ticket_id) {
+                  if (registrationToken) {
+                    try {
+                      sessionStorage.setItem(`ticket_token_${verifyRes.ticket_id}`, registrationToken);
+                      localStorage.setItem(`ticket_token_${verifyRes.ticket_id}`, registrationToken);
+                    } catch {}
+                  }
+                  if (typeof window !== "undefined") {
+                    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+                  }
+                  const enc = registrationToken ? encodeURIComponent(registrationToken) : "";
+                  router.push(
+                    `/tickets/${verifyRes.ticket_id}${registrationToken ? `?token=${enc}#access_token=${enc}` : ""}`,
+                    { scroll: true },
+                  );
+                  resolve();
+                } else {
+                  reject(new Error("Payment verified but ticket generation failed."));
+                }
+              } catch (err: unknown) {
+                reject(new Error(errorMessage(err, "Server-side payment verification failed.")));
+              }
+            },
+            prefill: {
+              name: "",
+              email: "",
+            },
+            notes: {
+              registration_id: registrationId,
+            },
+            theme: {
+              color: "#245d4e",
+            },
+            modal: {
+              ondismiss: function () {
+                reject(new Error("Payment cancelled by user."));
+              },
+            },
+          };
+
+          const rzp = new Razorpay(rzpOptions);
+          rzp.on("payment.failed", function (response) {
+            reject(new Error(response.error?.description || "Payment failed."));
+          });
+          rzp.open();
         });
-        rzp.open();
-      });
+        return;
+      }
+
+      throw new Error(`Unsupported payment gateway: '${activeGateway || "NONE"}'`);
     } catch (err: unknown) {
       const msg = errorMessage(err, "Payment processing failed.");
       if (!msg.includes("cancelled")) {
@@ -399,13 +404,15 @@ export default function PaymentCheckoutPage() {
   const callbackGateway = typeof window !== "undefined"
     ? new URLSearchParams(window.location.search).get("gateway")?.toUpperCase()
     : null;
-  const currentGateway = (order?.gateway || callbackGateway || "RAZORPAY").toUpperCase();
+  const currentGateway = (order?.gateway || callbackGateway || "CASHFREE").toUpperCase();
   const gatewayName =
     currentGateway === "CASHFREE"
       ? "Cashfree"
       : currentGateway === "PHONEPE"
         ? "PhonePe"
-        : "Razorpay";
+        : currentGateway === "RAZORPAY"
+          ? "Razorpay"
+          : "Secure Gateway";
 
   if (loading) {
     return (

@@ -167,3 +167,66 @@ def test_phonepe_order_and_verification_flow(client):
         EventUpdate(payment_gateway="DEFAULT"),
         user_id="test-admin-id",
     )
+
+def test_cashfree_webhook_flow(client):
+    headers = {"Authorization": "Bearer test-token-admin"}
+    event = event_service.get_event_by_slug("freshers-2k26")
+    event_service.update_event(
+        event["id"],
+        EventUpdate(payment_gateway="CASHFREE"),
+        user_id="test-admin-id",
+    )
+
+    uid = uuid.uuid4().hex[:6]
+    reg = registration_service.register_student(RegistrationCreate(
+        event_id=event["id"],
+        full_name="Webhook Tester",
+        roll_number=f"26WH{uid}",
+        email=f"webhook.{uid}@sphoorthy.ac.in",
+        phone="9876543210",
+        department="CSE",
+    ))
+
+    # Create Order
+    res_order = client.post(
+        "/api/v1/payments/create-order",
+        json={"registration_id": reg["id"]},
+        headers={**headers, "X-Registration-Token": reg["payment_token"]},
+    )
+    assert res_order.status_code == 200
+    order_data = res_order.json
+
+    # Simulate Cashfree Webhook callback
+    webhook_payload = {
+        "type": "PAYMENT_SUCCESS_WEBHOOK",
+        "data": {
+            "order": {
+                "order_id": order_data["order_id"],
+                "order_amount": order_data["amount"],
+            },
+            "payment": {
+                "cf_payment_id": f"cf_wh_{uid}",
+                "payment_status": "SUCCESS",
+            },
+        },
+    }
+
+    res_wh = client.post(
+        "/api/v1/webhooks/cashfree",
+        json=webhook_payload,
+        headers={
+            "x-webhook-signature": "test_signature",
+            "x-webhook-timestamp": "1729000000",
+        },
+    )
+    assert res_wh.status_code == 200
+    assert res_wh.json["status"] == "PAID"
+    assert "ticket_code" in res_wh.json
+
+    # Reset event gateway back to DEFAULT
+    event_service.update_event(
+        event["id"],
+        EventUpdate(payment_gateway="DEFAULT"),
+        user_id="test-admin-id",
+    )
+

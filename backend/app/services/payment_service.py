@@ -53,6 +53,26 @@ class PaymentService:
         )
         if existing:
             existing_gw = existing.get("gateway") or existing.get("payment_method") or "RAZORPAY"
+            if existing_gw == "CASHFREE":
+                cf_order_id = existing.get("gateway_order_id") or existing.get("razorpay_order_id")
+                if cf_order_id and not current_app.config.get("TESTING"):
+                    try:
+                        verification = gw.verify_payment(existing, {"order_id": cf_order_id})
+                        if verification.get("verified"):
+                            PaymentService._fulfill_payment(
+                                existing,
+                                verification["payment_id"],
+                                verification["signature"],
+                            )
+                            ticket = db.execute_one("SELECT id FROM tickets WHERE registration_id = %s", (registration_id,))
+                            return {
+                                "already_paid": True,
+                                "ticket_id": ticket["id"] if ticket else None,
+                                "message": "Registration is already paid.",
+                            }
+                    except Exception:
+                        pass
+
             if existing_gw == gw.name and gw.name == "RAZORPAY":
                 existing_amount = float(existing["amount"])
                 calc_fee = round(existing_amount - ticket_price, 2) if existing_amount > ticket_price else 0.0
@@ -225,6 +245,64 @@ class PaymentService:
         return {"status": "SUCCESS", "event": event_type}
 
     @staticmethod
+    def process_cashfree_webhook(raw_body: bytes, signature_header: str | None, timestamp_header: str | None):
+        try:
+            payload = json.loads(raw_body.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError("Invalid webhook payload.") from exc
+
+        if not isinstance(payload, dict):
+            raise ValueError("Invalid webhook payload.")
+
+        # Cashfree signature verification: signs timestamp + raw_body
+        if config.CASHFREE_SECRET_KEY and signature_header and timestamp_header:
+            import base64
+            computed = base64.b64encode(
+                hmac.new(
+                    config.CASHFREE_SECRET_KEY.encode("utf-8"),
+                    f"{timestamp_header}".encode("utf-8") + raw_body,
+                    hashlib.sha256,
+                ).digest()
+            ).decode("utf-8")
+            if not hmac.compare_digest(computed, signature_header):
+                current_app.logger.warning("Cashfree webhook signature mismatch; falling back to direct API verification")
+
+        data = payload.get("data") if isinstance(payload.get("data"), dict) else payload
+        order = data.get("order") if isinstance(data.get("order"), dict) else {}
+        payment_info = data.get("payment") if isinstance(data.get("payment"), dict) else {}
+
+        order_id = order.get("order_id") or payload.get("order_id") or data.get("order_id")
+        payment_id = str(payment_info.get("cf_payment_id") or payment_info.get("payment_id") or f"cf_wh_{order_id}")
+        event_type = payload.get("type") or payload.get("event") or ""
+
+        if not order_id:
+            return {"status": "IGNORED", "reason": "No order_id found"}
+
+        payment = db.execute_one(
+            "SELECT * FROM payments WHERE razorpay_order_id = %s OR gateway_order_id = %s",
+            (order_id, order_id),
+        )
+        if not payment:
+            return {"status": "IGNORED", "reason": "Payment order not found"}
+
+        if payment["status"] == "PAID":
+            return {"status": "SUCCESS", "event": event_type or "ALREADY_PAID"}
+
+        # Authoritatively verify with Cashfree gateway
+        gw = gateway_factory.get_gateway("CASHFREE")
+        verification = gw.verify_payment(payment, {
+            "order_id": order_id,
+            "payment_id": payment_id,
+            "signature": signature_header or "CASHFREE_WEBHOOK_VERIFIED",
+        })
+
+        return PaymentService._fulfill_payment(
+            payment,
+            verification["payment_id"],
+            verification["signature"],
+        )
+
+    @staticmethod
     def _fulfill_payment(payment: dict, payment_id: str, signature: str):
         if payment["status"] == "PAID":
             existing_pid = payment.get("gateway_payment_id") or payment.get("razorpay_payment_id")
@@ -241,7 +319,7 @@ class PaymentService:
                 "ticket_id": ticket["id"],
                 "ticket_code": ticket["ticket_code"],
             }
-        if payment["status"] != "CREATED":
+        if payment["status"] not in ("CREATED", "SUPERSEDED"):
             raise ValueError("Payment is not eligible for fulfillment.")
 
         now = datetime.now(timezone.utc).isoformat()
@@ -250,7 +328,7 @@ class PaymentService:
                SET razorpay_payment_id = %s, razorpay_signature = %s,
                    gateway_payment_id = %s, gateway_signature = %s,
                    status = 'PAID', updated_at = %s
-               WHERE id = %s AND status = 'CREATED'""",
+               WHERE id = %s AND status IN ('CREATED', 'SUPERSEDED')""",
             (payment_id, signature, payment_id, signature, now, payment["id"]),
         )
         if not updated:

@@ -22,7 +22,14 @@ def rate_limit(limit: int, window_seconds: int = 60):
         @wraps(handler)
         def wrapped(*args, **kwargs):
             user = getattr(g, "current_user", None)
-            identity = user["id"] if user else request.remote_addr or "unknown"
+            if user:
+                identity = user["id"]
+            else:
+                forwarded = request.headers.get("X-Forwarded-For")
+                if forwarded:
+                    identity = forwarded.split(",")[0].strip()
+                else:
+                    identity = request.remote_addr or "unknown"
             identity_hash = hashlib.sha256(identity.encode("utf-8")).hexdigest()
             key = f"{request.endpoint}:{identity_hash}"
             now = monotonic()

@@ -9,7 +9,7 @@ from app.api.v1.errors import format_validation_error, internal_error
 registrations_bp = Blueprint("registrations", __name__, url_prefix="/api/v1")
 
 @registrations_bp.route("/events/<event_id>/register", methods=["POST"])
-@rate_limit(8, 60)
+@rate_limit(60, 60)
 def register_student(event_id):
     try:
         body = request.get_json() or {}
