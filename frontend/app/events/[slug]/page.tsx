@@ -434,8 +434,14 @@ export default function EventRegistrationPage() {
                   />
                   <span className="text-xs text-slate-700 leading-relaxed font-medium">
                     I have read and agree to the{" "}
+                    <Link href="/terms" target="_blank" rel="noopener noreferrer" className="font-bold text-pink-700 hover:underline inline-flex items-center gap-0.5">
+                      Terms & Conditions <ExternalLink className="h-3 w-3" />
+                    </Link>{", "}
                     <Link href="/privacy" target="_blank" rel="noopener noreferrer" className="font-bold text-pink-700 hover:underline inline-flex items-center gap-0.5">
                       Privacy Policy <ExternalLink className="h-3 w-3" />
+                    </Link>{", and "}
+                    <Link href="/refund-policy" target="_blank" rel="noopener noreferrer" className="font-bold text-pink-700 hover:underline inline-flex items-center gap-0.5">
+                      Refund Policy <ExternalLink className="h-3 w-3" />
                     </Link>{" "}
                     and confirm my student details are accurate.
                   </span>

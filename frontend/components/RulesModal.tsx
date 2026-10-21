@@ -95,9 +95,15 @@ export default function RulesModal({ isOpen, onClose, onConfirm, submitting = fa
                 className="mt-1 h-5 w-5 rounded border-amber-400 text-amber-600 focus:ring-amber-500 accent-[#d3a52b]"
               />
               <span className="text-xs font-bold text-slate-900 leading-relaxed">
-                I HAVE READ, UNDERSTOOD, AND AGREE TO ABIDE BY ALL THE ABOVE RULES & REGULATIONS AND THE{" "}
+                I HAVE READ, UNDERSTOOD, AND AGREE TO ABIDE BY ALL THE ABOVE RULES & REGULATIONS, THE{" "}
+                <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-pink-700 underline hover:text-pink-900 inline-flex items-center gap-0.5">
+                  TERMS & CONDITIONS <ExternalLink className="h-3 w-3" />
+                </a>{", "}
                 <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-pink-700 underline hover:text-pink-900 inline-flex items-center gap-0.5">
                   PRIVACY POLICY <ExternalLink className="h-3 w-3" />
+                </a>{", AND "}
+                <a href="/refund-policy" target="_blank" rel="noopener noreferrer" className="text-pink-700 underline hover:text-pink-900 inline-flex items-center gap-0.5">
+                  REFUND POLICY <ExternalLink className="h-3 w-3" />
                 </a>{" "}
                 FOR THE FRESHER'S PARTY.
               </span>

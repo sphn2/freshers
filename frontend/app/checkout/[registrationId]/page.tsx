@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import { api } from "@/lib/api";
 import { errorMessage } from "@/lib/types";
 import type { PaymentOrder } from "@/lib/types";
@@ -550,7 +551,19 @@ export default function PaymentCheckoutPage() {
         </button>
 
         <p className="text-center text-[10px] leading-5 text-slate-500">
-          Payment details are securely processed by {gatewayName}. By clicking pay, you agree to the event rules.
+          Payment details are securely processed by {gatewayName}. By completing payment, you agree to our{" "}
+          <Link href="/terms" target="_blank" rel="noopener noreferrer" className="text-amber-800 underline hover:text-amber-950 font-semibold">
+            Terms & Conditions
+          </Link>
+          {", "}
+          <Link href="/privacy" target="_blank" rel="noopener noreferrer" className="text-amber-800 underline hover:text-amber-950 font-semibold">
+            Privacy Policy
+          </Link>
+          {", and "}
+          <Link href="/refund-policy" target="_blank" rel="noopener noreferrer" className="text-amber-800 underline hover:text-amber-950 font-semibold">
+            Refund Policy
+          </Link>
+          .
         </p>
       </div>
 
