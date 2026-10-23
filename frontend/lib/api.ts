@@ -163,6 +163,17 @@ export const api = {
       method: "POST",
     }),
 
+  reconcileAndResend: (rollNumber: string) =>
+    apiFetch<{
+      status: "SUCCESS" | "PENDING" | "NOT_FOUND";
+      message: string;
+      masked_email?: string;
+      student_name?: string;
+    }>("/payments/reconcile-and-resend", {
+      method: "POST",
+      body: JSON.stringify({ roll_number: rollNumber }),
+    }),
+
   validateGate: (payload: {
     event_id: string;
     qr_token?: string;

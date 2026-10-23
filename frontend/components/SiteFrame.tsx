@@ -24,6 +24,7 @@ import {
   Building2,
   Scale,
 } from "lucide-react";
+import VerifyPaymentModal from "@/components/VerifyPaymentModal";
 
 export function SiteProviderFrame({ children }: { children: React.ReactNode }) {
   return (
@@ -37,6 +38,7 @@ function SiteFrame({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user, role, hasRole, logout } = useAuth();
   const [currentYear, setCurrentYear] = useState<number>(2026);
+  const [showVerifyModal, setShowVerifyModal] = useState<boolean>(false);
 
   useEffect(() => {
     setCurrentYear(new Date().getFullYear());
@@ -204,7 +206,16 @@ function SiteFrame({ children }: { children: React.ReactNode }) {
             </Link>
           </nav>
 
-          <div className="hidden md:flex items-center gap-3">
+          <div className="hidden md:flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowVerifyModal(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-300 transition-colors cursor-pointer"
+            >
+              <ShieldCheck className="h-3.5 w-3.5 text-amber-700" />
+              <span>Verify Payment / Ticket</span>
+            </button>
+
             {user ? (
               <div className="flex items-center gap-3 pl-3 border-l border-slate-200">
                 <div className="flex items-center gap-2.5">
@@ -236,27 +247,34 @@ function SiteFrame({ children }: { children: React.ReactNode }) {
           </div>
 
           {/* Mobile Header Action / Logout */}
-          {user ? (
-            <div className="flex md:hidden items-center gap-2">
-              <div className="flex flex-col text-right">
-                <span className="text-[11px] font-bold text-slate-900 truncate max-w-[100px]">{user.full_name?.split(" ")[0]}</span>
-                <span className="text-[8px] font-extrabold tracking-wider text-amber-800 uppercase">{role.replaceAll("_", " ")}</span>
+          <div className="flex md:hidden items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setShowVerifyModal(true)}
+              title="Verify Payment / Resend Ticket"
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[10px] font-bold text-amber-900 bg-amber-50 border border-amber-300"
+            >
+              <ShieldCheck className="h-3.5 w-3.5 text-amber-700" />
+              <span>Verify Payment</span>
+            </button>
+            {user ? (
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  aria-label="Sign out"
+                  onClick={() => void logout()}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 hover:bg-rose-100 active:scale-95 transition-all"
+                >
+                  <LogOut className="h-3.5 w-3.5" />
+                  <span>Sign Out</span>
+                </button>
               </div>
-              <button
-                type="button"
-                aria-label="Sign out"
-                onClick={() => void logout()}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 hover:bg-rose-100 active:scale-95 transition-all"
-              >
-                <LogOut className="h-3.5 w-3.5" />
-                <span>Sign Out</span>
-              </button>
-            </div>
-          ) : (
-            <Link href="/auth/login" aria-label="Staff sign in" className="button-primary !min-h-10 !px-3 md:hidden">
-              <LogIn className="h-4 w-4" />
-            </Link>
-          )}
+            ) : (
+              <Link href="/auth/login" aria-label="Staff sign in" className="button-primary !min-h-9 !px-2.5">
+                <LogIn className="h-3.5 w-3.5" />
+              </Link>
+            )}
+          </div>
         </div>
       </header>
 
@@ -513,6 +531,10 @@ function SiteFrame({ children }: { children: React.ReactNode }) {
           </div>
         </nav>
       )}
+      <VerifyPaymentModal
+        isOpen={showVerifyModal}
+        onClose={() => setShowVerifyModal(false)}
+      />
     </>
   );
 }

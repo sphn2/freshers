@@ -6,7 +6,7 @@ import Link from "next/link";
 import { api } from "@/lib/api";
 import { errorMessage } from "@/lib/types";
 import type { PaymentOrder } from "@/lib/types";
-import { CreditCard, ShieldCheck, AlertCircle, Loader2, Ticket, FileText, Info, X } from "lucide-react";
+import { CreditCard, ShieldCheck, AlertCircle, Loader2, Ticket, FileText, Info, X, RefreshCw } from "lucide-react";
 import RulesModal from "@/components/RulesModal";
 
 interface RazorpaySuccessResponse {
@@ -428,6 +428,60 @@ export default function PaymentCheckoutPage() {
   const feeAmount = order?.convenience_fee ?? 0;
   const showFeeRow = Boolean(order?.convenience_fee_enabled && feeAmount > 0);
 
+  const handleCheckStatus = async () => {
+    setProcessing(true);
+    setError(null);
+    try {
+      const activeGateway = (order?.gateway || "RAZORPAY").toUpperCase();
+      if (order?.order_id) {
+        const verifyRes = await api.verifyPayment(
+          {
+            registration_id: registrationId,
+            order_id: order.order_id,
+            gateway: activeGateway,
+          },
+          registrationToken,
+        );
+        if (verifyRes.ticket_id) {
+          if (registrationToken) {
+            try {
+              sessionStorage.setItem(`ticket_token_${verifyRes.ticket_id}`, registrationToken);
+              localStorage.setItem(`ticket_token_${verifyRes.ticket_id}`, registrationToken);
+            } catch {}
+          }
+          const enc = registrationToken ? encodeURIComponent(registrationToken) : "";
+          router.push(
+            `/tickets/${verifyRes.ticket_id}${registrationToken ? `?token=${enc}#access_token=${enc}` : ""}`,
+            { scroll: true },
+          );
+          return;
+        }
+      }
+
+      // Re-init checkout which triggers backend gateway sync
+      const data = await api.createPaymentOrder(registrationId, registrationToken);
+      if (data.already_paid && data.ticket_id) {
+        if (registrationToken) {
+          try {
+            sessionStorage.setItem(`ticket_token_${data.ticket_id}`, registrationToken);
+            localStorage.setItem(`ticket_token_${data.ticket_id}`, registrationToken);
+          } catch {}
+        }
+        const enc = registrationToken ? encodeURIComponent(registrationToken) : "";
+        router.push(
+          `/tickets/${data.ticket_id}${registrationToken ? `?token=${enc}#access_token=${enc}` : ""}`,
+          { scroll: true },
+        );
+        return;
+      }
+      setError("Payment is still awaiting confirmation from your bank or payment gateway. If money was debited, please wait 1-2 minutes and click below to check again.");
+    } catch (err: unknown) {
+      setError(errorMessage(err, "Could not verify payment yet. If debited, please wait a moment and try again."));
+    } finally {
+      setProcessing(false);
+    }
+  };
+
   return (
     <div className="mx-auto max-w-2xl space-y-5">
       <div className="page-hero surface-grid flex items-end justify-between gap-5 p-6 md:p-8">
@@ -451,6 +505,15 @@ export default function PaymentCheckoutPage() {
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
               <span>{error}</span>
             </div>
+            <button
+              type="button"
+              onClick={handleCheckStatus}
+              disabled={processing}
+              className="button-secondary w-full !min-h-[44px] text-center flex items-center justify-center gap-2 text-xs font-bold text-amber-900 border border-amber-300 bg-amber-50 hover:bg-amber-100 cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${processing ? "animate-spin" : ""}`} />
+              <span>Money debited? Click to verify payment & get ticket</span>
+            </button>
             {!order && (
               <a
                 href="/"
@@ -549,6 +612,19 @@ export default function PaymentCheckoutPage() {
             </>
           )}
         </button>
+
+        {/* Self-service status check button */}
+        <div className="pt-1 text-center">
+          <button
+            type="button"
+            onClick={handleCheckStatus}
+            disabled={processing}
+            className="inline-flex items-center gap-1.5 text-xs text-amber-900 font-semibold hover:text-amber-950 hover:underline cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-amber-700 ${processing ? "animate-spin" : ""}`} />
+            <span>Already debited from bank / UPI? Click here to verify and get ticket</span>
+          </button>
+        </div>
 
         <p className="text-center text-[10px] leading-5 text-slate-500">
           Payment details are securely processed by {gatewayName}. By completing payment, you agree to our{" "}

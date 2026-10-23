@@ -9,6 +9,7 @@ import { registrationAvailability } from "@/lib/registration";
 import { ArrowLeft, ArrowRight, CalendarDays, Check, CheckCircle2, CircleAlert, Clock, ExternalLink, Lock, MapPin, RefreshCw, ShieldCheck, Ticket, UserRoundCheck } from "lucide-react";
 import Link from "next/link";
 import RulesModal from "@/components/RulesModal";
+import VerifyPaymentModal from "@/components/VerifyPaymentModal";
 
 export default function EventRegistrationPage() {
   const { slug } = useParams<{ slug: string }>();
@@ -24,6 +25,7 @@ export default function EventRegistrationPage() {
   const [phone, setPhone] = useState("");
   const [department, setDepartment] = useState("CSE");
   const [showRulesModal, setShowRulesModal] = useState(false);
+  const [showVerifyModal, setShowVerifyModal] = useState(false);
   const [acceptedPrivacy, setAcceptedPrivacy] = useState(false);
   const [autofillStatus, setAutofillStatus] = useState<"idle" | "searching" | "verified" | "not_found">("idle");
   const [autofillError, setAutofillError] = useState<string | null>(null);
@@ -226,6 +228,23 @@ export default function EventRegistrationPage() {
             <div className="hidden h-11 w-11 place-items-center border border-slate-200 text-blue-700 sm:grid"><UserRoundCheck className="h-5 w-5" /></div>
           </div>
 
+          {/* Helper Banner for students who already paid or had money debited */}
+          <div className="mt-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-amber-300/80 bg-amber-50/90 p-3.5 text-xs text-amber-950 shadow-xs">
+            <div className="flex items-start sm:items-center gap-2.5">
+              <ShieldCheck className="h-4 w-4 text-amber-700 shrink-0 mt-0.5 sm:mt-0" />
+              <span>
+                <strong>Money debited from bank or already paid?</strong> Verify live gateway status & dispatch your official ticket to your email.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowVerifyModal(true)}
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-amber-800 hover:bg-amber-900 px-3.5 py-1.5 text-xs font-bold text-white transition-all shadow-xs shrink-0 cursor-pointer active:scale-95"
+            >
+              Verify Payment
+            </button>
+          </div>
+
           {!availability.open ? (
             <div className="mt-6 rounded-xl border border-amber-300 bg-amber-50/90 p-6 space-y-4 shadow-sm">
               <div className="flex items-center gap-3">
@@ -261,7 +280,28 @@ export default function EventRegistrationPage() {
             </div>
           ) : (
             <form onSubmit={handleFormSubmit} className="mt-6 space-y-4">
-              {error && <div role="alert" className="flex items-center gap-2 border border-rose-300 bg-rose-50 p-3 text-xs font-semibold text-rose-800"><CircleAlert className="h-4 w-4 shrink-0" />{error}</div>}
+              {error && (
+                <div role="alert" className="space-y-2 border border-rose-300 bg-rose-50 p-3.5 text-xs font-semibold text-rose-800 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <CircleAlert className="h-4 w-4 shrink-0" />
+                    <span>{error}</span>
+                  </div>
+                  {(error.toLowerCase().includes("confirmed ticket") ||
+                    error.toLowerCase().includes("payment was already received") ||
+                    error.toLowerCase().includes("already exists")) && (
+                    <div className="pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setShowVerifyModal(true)}
+                        className="inline-flex items-center gap-1.5 rounded bg-amber-800 hover:bg-amber-900 px-3 py-1.5 text-xs font-bold text-white transition-colors cursor-pointer"
+                      >
+                        <ShieldCheck className="h-3.5 w-3.5" />
+                        Verify Payment & Resend Ticket to Email
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
               {notice && <div role="status" className="border border-emerald-300 bg-emerald-50 p-3 text-xs font-semibold text-emerald-800">{notice}</div>}
               <div>
                 <div className="flex items-center justify-between">
@@ -482,6 +522,12 @@ export default function EventRegistrationPage() {
         onClose={() => setShowRulesModal(false)}
         onConfirm={handleConfirmRulesAndRegister}
         submitting={submitting}
+      />
+
+      {/* Verify Payment & Resend Ticket Modal */}
+      <VerifyPaymentModal
+        isOpen={showVerifyModal}
+        onClose={() => setShowVerifyModal(false)}
       />
     </div>
   );

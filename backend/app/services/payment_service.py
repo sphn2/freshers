@@ -48,32 +48,32 @@ class PaymentService:
         gw = gateway_factory.get_gateway(reg.get("payment_gateway"))
 
         existing = db.execute_one(
-            "SELECT * FROM payments WHERE registration_id = %s AND status = 'CREATED' ORDER BY created_at DESC",
+            "SELECT * FROM payments WHERE registration_id = %s AND status IN ('CREATED', 'SUPERSEDED') ORDER BY created_at DESC",
             (registration_id,),
         )
         if existing:
             existing_gw = existing.get("gateway") or existing.get("payment_method") or "RAZORPAY"
-            if existing_gw == "CASHFREE":
-                cf_order_id = existing.get("gateway_order_id") or existing.get("razorpay_order_id")
-                if cf_order_id and not current_app.config.get("TESTING"):
-                    try:
-                        verification = gw.verify_payment(existing, {"order_id": cf_order_id})
-                        if verification.get("verified"):
-                            PaymentService._fulfill_payment(
-                                existing,
-                                verification["payment_id"],
-                                verification["signature"],
-                            )
-                            ticket = db.execute_one("SELECT id FROM tickets WHERE registration_id = %s", (registration_id,))
-                            return {
-                                "already_paid": True,
-                                "ticket_id": ticket["id"] if ticket else None,
-                                "message": "Registration is already paid.",
-                            }
-                    except Exception:
-                        pass
+            order_ref = existing.get("gateway_order_id") or existing.get("razorpay_order_id")
+            if order_ref and not current_app.config.get("TESTING"):
+                try:
+                    existing_gw_inst = gateway_factory.get_gateway(existing_gw)
+                    verification = existing_gw_inst.verify_payment(existing, {"order_id": order_ref})
+                    if verification.get("verified"):
+                        PaymentService._fulfill_payment(
+                            existing,
+                            verification["payment_id"],
+                            verification["signature"],
+                        )
+                        ticket = db.execute_one("SELECT id FROM tickets WHERE registration_id = %s", (registration_id,))
+                        return {
+                            "already_paid": True,
+                            "ticket_id": ticket["id"] if ticket else None,
+                            "message": "Registration is already paid.",
+                        }
+                except Exception as exc:
+                    current_app.logger.debug("Existing order %s not paid yet: %s", order_ref, exc)
 
-            if existing_gw == gw.name and gw.name == "RAZORPAY":
+            if existing.get("status") == "CREATED" and existing_gw == gw.name and gw.name == "RAZORPAY":
                 existing_amount = float(existing["amount"])
                 calc_fee = round(existing_amount - ticket_price, 2) if existing_amount > ticket_price else 0.0
                 order_id = existing.get("gateway_order_id") or existing.get("razorpay_order_id")
@@ -89,7 +89,7 @@ class PaymentService:
                     "currency": existing.get("currency", "INR"),
                     "registration_id": registration_id,
                 }
-            else:
+            elif existing.get("status") == "CREATED":
                 # Mark previous pending order superseded to generate a fresh order & session for Cashfree/PhonePe or when gateway changed
                 now_iso = datetime.now(timezone.utc).isoformat()
                 db.execute_write(
@@ -149,11 +149,20 @@ class PaymentService:
         payment = db.execute_one(
             """SELECT * FROM payments 
                WHERE registration_id = %s 
-                 AND (razorpay_order_id = %s OR gateway_order_id = %s)""",
+                 AND (razorpay_order_id = %s OR gateway_order_id = %s)
+               ORDER BY created_at DESC""",
             (registration_id, eff_order_id, eff_order_id),
         )
         if not payment:
-            raise ValueError("Payment order does not belong to this registration.")
+            # Fallback: find any pending payment for this registration if specific order mismatch
+            payment = db.execute_one(
+                """SELECT * FROM payments 
+                   WHERE registration_id = %s AND status IN ('CREATED', 'SUPERSEDED')
+                   ORDER BY created_at DESC""",
+                (registration_id,),
+            )
+            if not payment:
+                raise ValueError("Payment order does not belong to this registration.")
 
         gw_name = gateway or payment.get("gateway") or payment.get("payment_method") or "RAZORPAY"
         gw = gateway_factory.get_gateway(gw_name)
@@ -176,44 +185,68 @@ class PaymentService:
 
     @staticmethod
     def process_webhook(raw_body: bytes, signature_header: str | None):
-        if not config.RAZORPAY_WEBHOOK_SECRET or not signature_header:
-            raise ValueError("Webhook signature is required.")
-        expected = hmac.new(
-            config.RAZORPAY_WEBHOOK_SECRET.encode("utf-8"), raw_body, hashlib.sha256
-        ).hexdigest()
-        if not hmac.compare_digest(expected, signature_header):
-            raise ValueError("Invalid webhook signature.")
-
         try:
             event = json.loads(raw_body.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError("Invalid webhook payload.") from exc
         if not isinstance(event, dict):
             raise ValueError("Invalid webhook payload.")
+
+        # Signature verification check
+        sig_valid = False
+        if config.RAZORPAY_WEBHOOK_SECRET and signature_header:
+            expected = hmac.new(
+                config.RAZORPAY_WEBHOOK_SECRET.encode("utf-8"), raw_body, hashlib.sha256
+            ).hexdigest()
+            sig_valid = hmac.compare_digest(expected, signature_header)
+
+        if not sig_valid:
+            current_app.logger.warning("Razorpay webhook signature mismatch or unconfigured; falling back to authoritative direct API verification")
+
         event_type = event.get("event")
-        payload = event.get("payload")
-        payment_payload = payload.get("payment") if isinstance(payload, dict) else None
-        entity = payment_payload.get("entity", {}) if isinstance(payment_payload, dict) else {}
-        if not isinstance(entity, dict):
-            raise ValueError("Invalid webhook payment entity.")
-        order_id, payment_id = entity.get("order_id"), entity.get("id")
-        payment = (
-            db.execute_one(
-                "SELECT * FROM payments WHERE razorpay_order_id = %s OR gateway_order_id = %s",
-                (order_id, order_id),
-            )
-            if order_id
-            else None
+        payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+        payment_payload = payload.get("payment", {}) if isinstance(payload.get("payment"), dict) else {}
+        order_payload = payload.get("order", {}) if isinstance(payload.get("order"), dict) else {}
+
+        entity = payment_payload.get("entity", {}) if isinstance(payment_payload.get("entity"), dict) else {}
+        order_entity = order_payload.get("entity", {}) if isinstance(order_payload.get("entity"), dict) else {}
+
+        order_id = entity.get("order_id") or order_entity.get("id")
+        payment_id = entity.get("id")
+
+        if not order_id:
+            return {"status": "IGNORED", "reason": "No order_id found"}
+
+        payment = db.execute_one(
+            "SELECT * FROM payments WHERE razorpay_order_id = %s OR gateway_order_id = %s",
+            (order_id, order_id),
         )
-        if event_type == "payment.captured" and payment and payment_id:
-            expected_amount = int(round(float(payment["amount"]) * 100))
-            if (
-                entity.get("status") != "captured"
-                or entity.get("amount") != expected_amount
-                or entity.get("currency") != payment["currency"]
-            ):
-                raise ValueError("Captured payment does not match the expected order amount.")
-            PaymentService._fulfill_payment(payment, payment_id, "WEBHOOK_VERIFIED")
+
+        if event_type in ("payment.captured", "order.paid") and payment:
+            if payment.get("status") == "PAID":
+                return {"status": "SUCCESS", "event": event_type or "ALREADY_PAID"}
+
+            if sig_valid and entity:
+                expected_amount = int(round(float(payment["amount"]) * 100))
+                if (
+                    entity.get("status") != "captured"
+                    or entity.get("amount") != expected_amount
+                    or entity.get("currency") != payment.get("currency", "INR")
+                ):
+                    raise ValueError("Captured payment does not match the expected order amount.")
+                return PaymentService._fulfill_payment(payment, payment_id or f"pay_{order_id}", "WEBHOOK_VERIFIED")
+            else:
+                gw = gateway_factory.get_gateway("RAZORPAY")
+                verification = gw.verify_payment(payment, {
+                    "order_id": order_id,
+                    "payment_id": payment_id,
+                    "signature": "RAZORPAY_WEBHOOK_API_VERIFIED",
+                })
+                return PaymentService._fulfill_payment(
+                    payment,
+                    verification["payment_id"],
+                    verification["signature"],
+                )
         elif event_type == "payment.failed" and payment:
             db.execute_write(
                 "UPDATE payments SET status = 'FAILED', updated_at = %s WHERE id = %s AND status = 'CREATED'",

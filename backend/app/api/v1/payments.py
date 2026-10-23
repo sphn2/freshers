@@ -8,6 +8,9 @@ from app.db import db
 from app.api.v1.errors import format_validation_error, internal_error
 from app.utils.payment_access import registration_token_matches
 
+from app.services.ticket_service import ticket_service
+from app.services.gateways.factory import gateway_factory
+
 payments_bp = Blueprint("payments", __name__, url_prefix="/api/v1")
 
 def _can_access_registration(registration_id: str, token: str | None = None) -> bool:
@@ -113,3 +116,102 @@ def cashfree_webhook():
         return jsonify({"error": str(e)}), 400
     except Exception:
         return internal_error("processing a Cashfree webhook")
+
+
+def _mask_email(email: str) -> str:
+    if not email or "@" not in email:
+        return "your registered email"
+    name, domain = email.split("@", 1)
+    if len(name) <= 2:
+        masked_name = name[0] + "*"
+    else:
+        visible_prefix = name[:2]
+        visible_suffix = name[-1]
+        mask_len = min(max(len(name) - 3, 2), 6)
+        masked_name = visible_prefix + ("*" * mask_len) + visible_suffix
+    return f"{masked_name}@{domain}"
+
+
+@payments_bp.route("/payments/reconcile-and-resend", methods=["POST"])
+@rate_limit(15, 60)
+def reconcile_and_resend():
+    """
+    Secure self-service verification for students.
+    Checks payment status with gateways (Razorpay/Cashfree).
+    If paid, fulfills and sends the ticket EXCLUSIVELY to the student's registered email.
+    NEVER leaks QR codes or ticket tokens to the public screen.
+    """
+    try:
+        body = request.get_json() or {}
+        roll_number = str(body.get("roll_number", "")).strip().upper()
+        if not roll_number or len(roll_number) < 4:
+            return jsonify({"error": "A valid roll number is required."}), 400
+
+        # Find registration by roll number
+        reg = db.execute_one(
+            "SELECT * FROM registrations WHERE roll_number = %s ORDER BY created_at DESC",
+            (roll_number,),
+        )
+        if not reg:
+            return jsonify({
+                "status": "NOT_FOUND",
+                "message": f"No registration record found for roll number '{roll_number}'. Please submit the event registration form first."
+            }), 200
+
+        masked = _mask_email(reg["email"])
+
+        # Case 1: Registration is already marked PAID
+        if reg["status"] in ("PAID", "OFFLINE_PAID"):
+            ticket = db.execute_one("SELECT * FROM tickets WHERE registration_id = %s", (reg["id"],))
+            if not ticket:
+                ticket = ticket_service.issue_ticket(reg["id"], send_notification=True)
+            else:
+                full_ticket = ticket_service.get_ticket_by_id(ticket["id"])
+                ticket_service.send_ticket_email(full_ticket)
+
+            return jsonify({
+                "status": "SUCCESS",
+                "message": f"Payment is confirmed! Your digital ticket pass and QR code have been dispatched to your email: {masked}.",
+                "masked_email": masked,
+                "student_name": reg["full_name"],
+            }), 200
+
+        # Case 2: Registration is PENDING_PAYMENT -> Check payment gateways in real-time
+        payments = db.execute_query(
+            "SELECT * FROM payments WHERE registration_id = %s AND status IN ('CREATED', 'SUPERSEDED') ORDER BY created_at DESC",
+            (reg["id"],),
+        )
+
+        verified_payment = None
+        for p in payments:
+            gw_name = p.get("gateway") or p.get("payment_method") or "RAZORPAY"
+            order_ref = p.get("gateway_order_id") or p.get("razorpay_order_id")
+            if not order_ref:
+                continue
+            try:
+                gw = gateway_factory.get_gateway(gw_name)
+                verification = gw.verify_payment(p, {"order_id": order_ref})
+                if verification.get("verified"):
+                    verified_payment = (p, verification)
+                    break
+            except Exception:
+                continue
+
+        if verified_payment:
+            p, verification = verified_payment
+            payment_service._fulfill_payment(p, verification["payment_id"], verification["signature"])
+            return jsonify({
+                "status": "SUCCESS",
+                "message": f"Payment verified from gateway! Your entry ticket and QR pass have been issued and sent to your email: {masked}.",
+                "masked_email": masked,
+                "student_name": reg["full_name"],
+            }), 200
+
+        return jsonify({
+            "status": "PENDING",
+            "message": "Payment has not been completed yet or is awaiting bank confirmation. If money was debited, please wait 1-2 minutes and click again.",
+            "masked_email": masked,
+        }), 200
+
+    except Exception:
+        return internal_error("checking payment status")

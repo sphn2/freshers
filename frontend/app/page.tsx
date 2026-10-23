@@ -6,12 +6,14 @@ import { api } from "@/lib/api";
 import { errorMessage } from "@/lib/types";
 import type { Event } from "@/lib/types";
 import { registrationAvailability } from "@/lib/registration";
-import { ArrowUpRight, CalendarDays, Clock, MapPin, Sparkles, Ticket, Users, CheckCircle2 } from "lucide-react";
+import { ArrowUpRight, CalendarDays, Clock, MapPin, Sparkles, Ticket, Users, CheckCircle2, ShieldCheck } from "lucide-react";
+import VerifyPaymentModal from "@/components/VerifyPaymentModal";
 
 export default function StudentHomePage() {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showVerifyModal, setShowVerifyModal] = useState(false);
 
   useEffect(() => {
     async function loadEvents() {
@@ -107,7 +109,7 @@ export default function StudentHomePage() {
             </div>
 
             {/* CTA Button */}
-            <div className="pt-2">
+            <div className="flex flex-wrap items-center gap-3 pt-2">
               <Link
                 href={mainEvent ? `/events/${mainEvent.slug}` : "/events/freshers-2k26"}
                 className="button-primary button-accent inline-flex items-center gap-3 !min-h-14 !px-8 text-sm font-extrabold uppercase tracking-wider shadow-lg hover:scale-[1.02] transition-all"
@@ -115,6 +117,14 @@ export default function StudentHomePage() {
                 <Ticket className="h-5 w-5" /> Book Ticket & Reserve Pass
                 <ArrowUpRight className="h-5 w-5" />
               </Link>
+              <button
+                type="button"
+                onClick={() => setShowVerifyModal(true)}
+                className="inline-flex items-center gap-2 rounded-xl border border-amber-400/50 bg-amber-400/10 hover:bg-amber-400/20 px-5 py-4 text-xs font-bold text-amber-200 transition-all cursor-pointer backdrop-blur-sm shadow-md hover:border-amber-400/80 active:scale-95"
+              >
+                <ShieldCheck className="h-4 w-4 text-amber-400" />
+                <span>Already Paid? Verify & Resend Ticket</span>
+              </button>
             </div>
           </div>
 
@@ -256,6 +266,11 @@ export default function StudentHomePage() {
         </div>
         <span className="font-mono text-[10px] text-slate-400">Campus Code: SPHN-2026</span>
       </div>
+
+      <VerifyPaymentModal
+        isOpen={showVerifyModal}
+        onClose={() => setShowVerifyModal(false)}
+      />
     </div>
   );
 }

@@ -38,6 +38,7 @@ class RazorpayGateway(BasePaymentGateway):
                     "amount": amount_in_paise,
                     "currency": "INR",
                     "receipt": f"reg_{registration_id[:16]}",
+                    "payment_capture": 1,
                     "notes": {"registration_id": registration_id},
                 })
                 order_id = order["id"]
@@ -67,41 +68,72 @@ class RazorpayGateway(BasePaymentGateway):
         payment: Dict[str, Any],
         payload: Dict[str, Any],
     ) -> Dict[str, Any]:
-        order_id = payload.get("order_id") or payload.get("razorpay_order_id")
+        order_id = payload.get("order_id") or payload.get("razorpay_order_id") or payment.get("gateway_order_id") or payment.get("razorpay_order_id")
         payment_id = payload.get("payment_id") or payload.get("razorpay_payment_id")
         signature = payload.get("signature") or payload.get("razorpay_signature")
 
-        if not order_id or not payment_id or not signature:
-            raise ValueError("Missing Razorpay payment verification parameters.")
+        if not order_id:
+            raise ValueError("Missing Razorpay order ID for verification.")
 
         if current_app.config.get("TESTING"):
-            if signature != "test_signature":
+            if signature and signature != "test_signature":
                 raise ValueError("Invalid test payment signature.")
             return {
                 "verified": True,
-                "payment_id": payment_id,
-                "signature": signature,
+                "payment_id": payment_id or "pay_test_captured",
+                "signature": signature or "test_signature",
                 "raw": {"status": "test_captured"},
             }
 
-        if not config.RAZORPAY_KEY_SECRET:
+        if not config.RAZORPAY_KEY_SECRET or not config.RAZORPAY_KEY_ID:
             raise ValueError("Payment verification is not configured.")
 
-        expected = hmac.new(
-            config.RAZORPAY_KEY_SECRET.encode("utf-8"),
-            f"{order_id}|{payment_id}".encode("utf-8"),
-            hashlib.sha256,
-        ).hexdigest()
-        if not hmac.compare_digest(expected, signature):
-            raise ValueError("Invalid Razorpay payment signature.")
-
-        try:
-            provider_payment = self._get_client().payment.fetch(payment_id)
-        except Exception as exc:
-            current_app.logger.exception("Could not confirm payment status with Razorpay.")
-            raise ValueError("Unable to confirm payment status with Razorpay.") from exc
-
         expected_amount = int(round(float(payment["amount"]) * 100))
+        client = self._get_client()
+
+        # If frontend passed both signature and payment_id (standard checkout modal flow)
+        if signature and payment_id and signature not in ("RAZORPAY_API_VERIFIED", "RAZORPAY_WEBHOOK_API_VERIFIED"):
+            expected = hmac.new(
+                config.RAZORPAY_KEY_SECRET.encode("utf-8"),
+                f"{order_id}|{payment_id}".encode("utf-8"),
+                hashlib.sha256,
+            ).hexdigest()
+            if not hmac.compare_digest(expected, signature):
+                raise ValueError("Invalid Razorpay payment signature.")
+
+            try:
+                provider_payment = client.payment.fetch(payment_id)
+            except Exception as exc:
+                current_app.logger.exception("Could not confirm payment status with Razorpay.")
+                raise ValueError("Unable to confirm payment status with Razorpay.") from exc
+        else:
+            # Authoritative server-to-server check via Razorpay API using API credentials
+            try:
+                payments_resp = client.order.payments(order_id)
+                items = payments_resp.get("items", [])
+                captured = [p for p in items if p.get("status") == "captured"]
+                if not captured:
+                    authorized = [p for p in items if p.get("status") == "authorized"]
+                    if authorized:
+                        try:
+                            cap_resp = client.payment.capture(
+                                authorized[0]["id"],
+                                authorized[0]["amount"]
+                            )
+                            if cap_resp.get("status") == "captured":
+                                captured = [cap_resp]
+                        except Exception:
+                            pass
+                if not captured:
+                    raise ValueError("No captured payment found for this order on Razorpay.")
+
+                provider_payment = captured[0]
+                payment_id = provider_payment["id"]
+                signature = signature or "RAZORPAY_API_VERIFIED"
+            except Exception as exc:
+                current_app.logger.exception("Could not confirm payment status with Razorpay.")
+                raise ValueError(f"Unable to confirm payment status with Razorpay: {exc}") from exc
+
         if (
             provider_payment.get("order_id") != order_id
             or provider_payment.get("status") != "captured"
