@@ -225,3 +225,77 @@ def test_offline_endpoints_require_offline_collector_privilege():
         }
         auth_summary_res = client.get("/api/v1/offline/summary", headers=authorized_headers)
         assert auth_summary_res.status_code == 200
+
+
+def test_offline_registration_reuses_online_pending_payment(monkeypatch):
+    app = create_app()
+    with app.app_context():
+        event = event_service.get_event_by_slug("freshers-2k26")
+        original = prepare_event(event["id"])
+        monkeypatch.setattr(ticket_service, "send_ticket_email", lambda ticket: None)
+
+        unique_suffix = str(uuid.uuid4())[:8]
+        roll = f"26N81A{unique_suffix}"
+        email = f"pending.{unique_suffix}@sphoorthy.ac.in"
+        reg_id = str(uuid.uuid4())
+        pay_id = str(uuid.uuid4())
+        now = datetime.now(timezone.utc).isoformat()
+
+        # Simulate student who tried online booking and abandoned before payment
+        db.execute_write(
+            """INSERT INTO registrations (
+                id, event_id, user_id, full_name, roll_number, email, phone,
+                department, college, ticket_price, status, payment_method, created_at, updated_at
+            ) VALUES (%s, %s, NULL, %s, %s, %s, %s, %s, %s, %s, 'PENDING_PAYMENT', 'ONLINE', %s, %s)""",
+            (
+                reg_id, event["id"], "Pending Student", roll, email,
+                "9876543210", "CSE", "Sphoorthy Engineering College",
+                float(event["first_year_ticket_price"]), now, now,
+            ),
+        )
+        db.execute_write(
+            """INSERT INTO payments (
+                id, registration_id, amount, status, payment_method, created_at, updated_at
+            ) VALUES (%s, %s, %s, 'CREATED', 'RAZORPAY', %s, %s)""",
+            (pay_id, reg_id, float(event["first_year_ticket_price"]), now, now),
+        )
+
+        try:
+            # Collector at cash desk issues ticket to the same student
+            req = OfflineRegistrationRequest(
+                event_id=event["id"],
+                full_name="Pending Student Updated",
+                roll_number=roll,
+                email=email,
+                phone="9876543210",
+                department="CSE",
+                amount_paid=event["first_year_ticket_price"],
+                pin="123456",
+            )
+            res = offline_service.register_offline_cash(req, "test-collector")
+
+            # Registration ID should be reused (not duplicated)
+            assert res.registration_id == reg_id
+            assert res.ticket_code is not None
+
+            # Database record updated to OFFLINE_PAID / CASH
+            updated_reg = db.execute_one("SELECT * FROM registrations WHERE id = %s", (reg_id,))
+            assert updated_reg["status"] == "OFFLINE_PAID"
+            assert updated_reg["payment_method"] == "CASH"
+            assert updated_reg["full_name"] == "Pending Student Updated"
+
+            # Pending payment marked FAILED
+            payment_row = db.execute_one("SELECT * FROM payments WHERE id = %s", (pay_id,))
+            assert payment_row["status"] == "FAILED"
+
+            # Offline collection recorded
+            coll = db.execute_one("SELECT * FROM offline_collections WHERE registration_id = %s", (reg_id,))
+            assert coll is not None
+            assert coll["collector_id"] == "test-collector"
+
+            # Trying to issue ticket again should raise error
+            with pytest.raises(ValueError, match="A confirmed ticket already exists"):
+                offline_service.register_offline_cash(req, "test-collector")
+        finally:
+            restore_event(event["id"], original)
+

@@ -276,12 +276,11 @@ function OfflineCollectorContent() {
               className="field-control"
             >
               <option value="CSE">CSE</option>
-              <option value="AIML">AIML</option>
-              <option value="DATA SCIENCE">Data Science</option>
               <option value="ECE">ECE</option>
-              <option value="EEE">EEE</option>
-              <option value="MECHANICAL">Mechanical</option>
-              <option value="CIVIL">Civil</option>
+              <option value="CSE-CS">CSE-CS</option>
+              <option value="CSE - AIML">CSE - AIML</option>
+              <option value="CSE - DS">CSE - DS</option>
+              <option value="CIVIL">CIVIL</option>
             </select>
           </div>
 

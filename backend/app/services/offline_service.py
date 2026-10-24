@@ -35,29 +35,114 @@ class OfflineService:
             expected_amount = ticket_price_for_roll(event, req.roll_number)
             if round(float(req.amount_paid), 2) != expected_amount:
                 raise ValueError(f"Cash amount must match the event fee of ₹{expected_amount:.2f}.")
-            ensure_event_capacity_available(event)
-
-            dup = db.execute_one(
-                "SELECT id FROM registrations WHERE event_id = %s AND (LOWER(email) = LOWER(%s) OR LOWER(roll_number) = LOWER(%s))",
+            matching_query = """SELECT * FROM registrations
+                                WHERE event_id = %s AND
+                                (LOWER(email) = LOWER(%s) OR LOWER(roll_number) = LOWER(%s))"""
+            if not db.is_sqlite:
+                matching_query += " FOR UPDATE"
+            matching = db.execute_query(
+                matching_query,
                 (req.event_id, req.email.strip(), req.roll_number.strip()),
             )
-            if dup:
-                raise ValueError("Registration already exists for this student in this event.")
 
-            db.execute_write(
-                """INSERT INTO registrations (
-                    id, event_id, user_id, full_name, roll_number, email, phone,
-                    department, college, ticket_price, status, payment_method, created_at, updated_at
-                ) VALUES (
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
-                )""",
-                (
-                    reg_id, req.event_id, None, req.full_name.strip(),
-                    req.roll_number.strip().upper(), req.email.strip().lower(),
-                    req.phone.strip(), req.department.strip(), req.college.strip(),
-                    req.amount_paid, "OFFLINE_PAID", "CASH", now, now,
-                ),
-            )
+            previous = None
+            if matching:
+                exact_match = next((
+                    m for m in matching
+                    if m["roll_number"].strip().casefold() == req.roll_number.strip().casefold()
+                    and m["email"].strip().casefold() == req.email.strip().casefold()
+                ), None)
+
+                roll_match = next((
+                    m for m in matching
+                    if m["roll_number"].strip().casefold() == req.roll_number.strip().casefold()
+                ), None)
+
+                email_match = next((
+                    m for m in matching
+                    if m["email"].strip().casefold() == req.email.strip().casefold()
+                ), None)
+
+                if roll_match and email_match and roll_match["id"] != email_match["id"]:
+                    raise ValueError(
+                        f"Roll number '{req.roll_number}' and email '{req.email}' match two separate existing registrations."
+                    )
+
+                if exact_match:
+                    previous = exact_match
+                elif roll_match:
+                    previous = roll_match
+                elif email_match:
+                    if email_match["status"] not in ("PENDING_PAYMENT", "CANCELLED"):
+                        raise ValueError("A confirmed ticket already exists for this email address in this event.")
+                    raise ValueError(
+                        f"Email '{req.email}' is already associated with pending registration for roll number '{email_match['roll_number']}'."
+                    )
+
+                if previous:
+                    if previous["status"] not in ("PENDING_PAYMENT", "CANCELLED"):
+                        raise ValueError("A confirmed ticket already exists for this student in this event.")
+
+                    existing_ticket = db.execute_one(
+                        "SELECT id FROM tickets WHERE registration_id = %s",
+                        (previous["id"],),
+                    )
+                    if existing_ticket:
+                        raise ValueError("A ticket has already been issued for this registration.")
+
+                    payment = db.execute_one(
+                        "SELECT id FROM payments WHERE registration_id = %s AND status = 'PAID'",
+                        (previous["id"],),
+                    )
+                    if payment:
+                        raise ValueError("Payment was already received for this student.")
+
+            if previous:
+                if previous["status"] == "CANCELLED":
+                    ensure_event_capacity_available(event)
+            else:
+                ensure_event_capacity_available(event)
+
+            if previous:
+                reg_id = previous["id"]
+                db.execute_write(
+                    """UPDATE payments SET status = 'FAILED', updated_at = %s
+                       WHERE registration_id = %s AND status = 'CREATED'""",
+                    (now, reg_id),
+                )
+                db.execute_write(
+                    """UPDATE registrations
+                       SET full_name = %s, roll_number = %s, email = %s, phone = %s,
+                           department = %s, college = %s, ticket_price = %s, status = 'OFFLINE_PAID',
+                           payment_method = 'CASH', payment_access_token_hash = NULL, updated_at = %s
+                       WHERE id = %s""",
+                    (
+                        req.full_name.strip(),
+                        req.roll_number.strip().upper(),
+                        req.email.strip().lower(),
+                        req.phone.strip(),
+                        req.department.strip(),
+                        req.college.strip(),
+                        req.amount_paid,
+                        now,
+                        reg_id,
+                    ),
+                )
+            else:
+                db.execute_write(
+                    """INSERT INTO registrations (
+                        id, event_id, user_id, full_name, roll_number, email, phone,
+                        department, college, ticket_price, status, payment_method, created_at, updated_at
+                    ) VALUES (
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    )""",
+                    (
+                        reg_id, req.event_id, None, req.full_name.strip(),
+                        req.roll_number.strip().upper(), req.email.strip().lower(),
+                        req.phone.strip(), req.department.strip(), req.college.strip(),
+                        req.amount_paid, "OFFLINE_PAID", "CASH", now, now,
+                    ),
+                )
             db.execute_write(
                 """INSERT INTO offline_collections (
                     id, collector_id, event_id, registration_id, amount, payment_method, receipt_number, notes, created_at
@@ -70,6 +155,7 @@ class OfflineService:
                 "amount": req.amount_paid,
                 "receipt": receipt,
                 "ticket_code": ticket["ticket_code"],
+                "reused_previous": bool(previous),
             })
 
         ticket_service.send_ticket_email(ticket)
