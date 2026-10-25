@@ -114,7 +114,7 @@ class OfflineService:
                     """UPDATE registrations
                        SET full_name = %s, roll_number = %s, email = %s, phone = %s,
                            department = %s, college = %s, ticket_price = %s, status = 'OFFLINE_PAID',
-                           payment_method = 'CASH', payment_access_token_hash = NULL, updated_at = %s
+                           payment_method = 'CASH', payment_access_token_hash = NULL, created_at = %s, updated_at = %s
                        WHERE id = %s""",
                     (
                         req.full_name.strip(),
@@ -124,6 +124,7 @@ class OfflineService:
                         req.department.strip(),
                         req.college.strip(),
                         req.amount_paid,
+                        now,
                         now,
                         reg_id,
                     ),

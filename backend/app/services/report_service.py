@@ -107,33 +107,24 @@ class ReportService:
 
     @staticmethod
     def get_payments_report(event_id: str = None, limit: int = 200):
-        if event_id:
-            return db.execute_query(
-                """SELECT p.id, p.razorpay_order_id, p.razorpay_payment_id, p.amount, p.currency,
-                          p.status, p.payment_method, p.created_at,
-                          r.id as registration_id, r.full_name, r.roll_number, r.email, r.phone, e.title as event_title,
-                          t.ticket_code
-                   FROM payments p
-                   JOIN registrations r ON p.registration_id = r.id
-                   JOIN events e ON r.event_id = e.id
-                   LEFT JOIN tickets t ON r.id = t.registration_id
-                   WHERE r.event_id = %s
-                   ORDER BY p.created_at DESC LIMIT %s""",
-                (event_id, limit)
-            )
-        else:
-            return db.execute_query(
-                """SELECT p.id, p.razorpay_order_id, p.razorpay_payment_id, p.amount, p.currency,
-                          p.status, p.payment_method, p.created_at,
-                          r.id as registration_id, r.full_name, r.roll_number, r.email, r.phone, e.title as event_title,
-                          t.ticket_code
-                   FROM payments p
-                   JOIN registrations r ON p.registration_id = r.id
-                   JOIN events e ON r.event_id = e.id
-                   LEFT JOIN tickets t ON r.id = t.registration_id
-                   ORDER BY p.created_at DESC LIMIT %s""",
-                (limit,)
-            )
+        pay_date_expr = "COALESCE(CASE WHEN p.status = 'PAID' THEN COALESCE(t.created_at, p.updated_at) ELSE p.created_at END, p.created_at)"
+        where_clause = "WHERE r.event_id = %s" if event_id else ""
+        params = (event_id, limit) if event_id else (limit,)
+        return db.execute_query(
+            f"""SELECT p.id, p.razorpay_order_id, p.razorpay_payment_id, p.amount, p.currency,
+                      p.status, p.payment_method,
+                      {pay_date_expr} as created_at,
+                      p.updated_at as paid_at,
+                      r.id as registration_id, r.full_name, r.roll_number, r.email, r.phone, e.title as event_title,
+                      t.ticket_code
+               FROM payments p
+               JOIN registrations r ON p.registration_id = r.id
+               JOIN events e ON r.event_id = e.id
+               LEFT JOIN tickets t ON r.id = t.registration_id
+               {where_clause}
+               ORDER BY {pay_date_expr} DESC LIMIT %s""",
+            params
+        )
 
     @staticmethod
     def get_gate_entries_report(event_id: str = None, limit: int = 200):
@@ -241,31 +232,33 @@ class ReportService:
         Also adds a grand totals object at the end.
         """
         # --- ONLINE rows: from payments table (PAID or CAPTURED status) ---
+        # Calculate daily rows by successful payment completion date (ticket issued / payment completion date)
+        pay_date_expr = "COALESCE(t.created_at, p.updated_at, p.created_at)"
         online_where = "WHERE r.event_id::text = %s AND (p.status = 'PAID' OR p.status = 'CAPTURED')"
         online_params = [event_id]
         cash_where = "WHERE oc.event_id::text = %s"
         cash_params = [event_id]
 
         if date_from:
-            online_where += " AND substr(p.created_at::text, 1, 10) >= %s"
+            online_where += f" AND substr({pay_date_expr}::text, 1, 10) >= %s"
             online_params.append(date_from)
             cash_where += " AND substr(oc.created_at::text, 1, 10) >= %s"
             cash_params.append(date_from)
         if date_to:
-            online_where += " AND substr(p.created_at::text, 1, 10) <= %s"
+            online_where += f" AND substr({pay_date_expr}::text, 1, 10) <= %s"
             online_params.append(date_to)
             cash_where += " AND substr(oc.created_at::text, 1, 10) <= %s"
             cash_params.append(date_to)
 
         online_rows = db.execute_query(
-            f"""SELECT substr(p.created_at::text, 1, 10) as day,
+            f"""SELECT substr({pay_date_expr}::text, 1, 10) as day,
                        COUNT(DISTINCT t.id) as tickets_issued,
                        COALESCE(SUM(p.amount), 0) as amount
                 FROM payments p
                 JOIN registrations r ON p.registration_id = r.id
                 LEFT JOIN tickets t ON r.id = t.registration_id
                 {online_where}
-                GROUP BY substr(p.created_at::text, 1, 10)
+                GROUP BY substr({pay_date_expr}::text, 1, 10)
                 ORDER BY day ASC""",
             tuple(online_params)
         )

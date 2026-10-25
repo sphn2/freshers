@@ -132,6 +132,12 @@ class TicketService:
                 return TicketService.get_ticket_by_id(concurrent_ticket["id"])
             raise RuntimeError("Ticket could not be issued. Please retry.")
 
+        # Ensure registration created_at is synced to successful payment / ticket issue timestamp
+        db.execute_write(
+            "UPDATE registrations SET created_at = %s, updated_at = %s WHERE id = %s",
+            (now, now, registration_id),
+        )
+
         # Insert Food Entitlement if enabled
         if event.get("food_validation_enabled"):
             food_id = str(uuid.uuid4())

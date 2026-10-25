@@ -330,3 +330,62 @@ def test_api_admin_financial_endpoints(client, sample_event):
     assert res.status_code == 200
     assert res.json["settlement"]["is_settled"] is True
     assert res.json["settlement"]["transaction_id"] == "UTR554433221100"
+
+
+def test_daily_report_and_payment_date_alignment(sample_event):
+    event_id = sample_event
+    reg_date = "2026-10-20"
+    pay_date = "2026-10-25"
+    reg_timestamp = f"{reg_date}T10:00:00+00:00"
+    pay_timestamp = f"{pay_date}T15:30:00+00:00"
+
+    # Student registers on Day 1 (Oct 20) with PENDING_PAYMENT
+    reg_id = str(uuid.uuid4())
+    db.execute_write(
+        """INSERT INTO registrations (id, event_id, full_name, roll_number, email, phone, department, ticket_price, status, payment_method, created_at, updated_at)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+        (reg_id, event_id, "Delayed Pay Student", f"26N81A{str(uuid.uuid4())[:4]}", f"delayed.{reg_id[:6]}@sphoorthy.ac.in", "9988776655", "CSE", 500.0, "PENDING_PAYMENT", "ONLINE", reg_timestamp, reg_timestamp),
+    )
+
+    # Initial order created on Day 1
+    pay_id = str(uuid.uuid4())
+    db.execute_write(
+        """INSERT INTO payments (id, registration_id, amount, status, payment_method, razorpay_order_id, created_at, updated_at)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+        (pay_id, reg_id, 503.79, "CREATED", "RAZORPAY", f"order_{str(uuid.uuid4())[:8]}", reg_timestamp, reg_timestamp),
+    )
+
+    # Payment succeeds on Day 2 (Oct 25)
+    db.execute_write(
+        """UPDATE payments SET status = 'PAID', razorpay_payment_id = %s, updated_at = %s WHERE id = %s""",
+        (f"pay_{str(uuid.uuid4())[:8]}", pay_timestamp, pay_id),
+    )
+    # Ticket issued on Day 2 (Oct 25)
+    t_id = str(uuid.uuid4())
+    db.execute_write(
+        """INSERT INTO tickets (id, event_id, registration_id, ticket_code, qr_token, status, created_at, updated_at)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+        (t_id, event_id, reg_id, "DLY001", str(uuid.uuid4()), "ISSUED", pay_timestamp, pay_timestamp),
+    )
+    # Registration updated to PAID with created_at set to payment date
+    db.execute_write(
+        "UPDATE registrations SET status = 'PAID', created_at = %s, updated_at = %s WHERE id = %s",
+        (pay_timestamp, pay_timestamp, reg_id),
+    )
+
+    # Verify Daily Revenue Report groups the booking on Oct 25 (payment date), NOT Oct 20
+    report = report_service.get_daily_revenue_report(event_id=event_id)
+    online_dates = [r["date"] for r in report["online"]]
+    assert pay_date in online_dates
+    assert reg_date not in online_dates
+
+    oct25_row = [r for r in report["online"] if r["date"] == pay_date][0]
+    assert oct25_row["tickets_issued"] >= 1
+    assert oct25_row["amount"] >= 500.0
+
+    # Verify Payments Report attributes the created_at/date to the payment completion timestamp
+    payments_rep = report_service.get_payments_report(event_id=event_id)
+    target_payment = [p for p in payments_rep if p["id"] == pay_id][0]
+    assert target_payment["created_at"] == pay_timestamp
+    assert target_payment["paid_at"] == pay_timestamp
+

@@ -337,13 +337,14 @@ class PaymentService:
 
     @staticmethod
     def _fulfill_payment(payment: dict, payment_id: str, signature: str):
+        now = datetime.now(timezone.utc).isoformat()
         if payment["status"] == "PAID":
             existing_pid = payment.get("gateway_payment_id") or payment.get("razorpay_payment_id")
             if existing_pid and existing_pid != payment_id:
                 raise ValueError("Payment order was already settled by another payment.")
             db.execute_write(
-                "UPDATE registrations SET status = 'PAID', updated_at = %s WHERE id = %s AND status = 'PENDING_PAYMENT'",
-                (datetime.now(timezone.utc).isoformat(), payment["registration_id"]),
+                "UPDATE registrations SET status = 'PAID', created_at = %s, updated_at = %s WHERE id = %s AND status = 'PENDING_PAYMENT'",
+                (now, now, payment["registration_id"]),
             )
             ticket = ticket_service.issue_ticket(payment["registration_id"])
             return {
@@ -355,7 +356,6 @@ class PaymentService:
         if payment["status"] not in ("CREATED", "SUPERSEDED", "FAILED"):
             raise ValueError("Payment is not eligible for fulfillment.")
 
-        now = datetime.now(timezone.utc).isoformat()
         updated = db.execute_write(
             """UPDATE payments 
                SET razorpay_payment_id = %s, razorpay_signature = %s,
@@ -369,8 +369,8 @@ class PaymentService:
             return PaymentService._fulfill_payment(refreshed, payment_id, signature)
 
         db.execute_write(
-            "UPDATE registrations SET status = 'PAID', updated_at = %s WHERE id = %s AND status = 'PENDING_PAYMENT'",
-            (now, payment["registration_id"]),
+            "UPDATE registrations SET status = 'PAID', created_at = %s, updated_at = %s WHERE id = %s",
+            (now, now, payment["registration_id"]),
         )
         ticket = ticket_service.issue_ticket(payment["registration_id"])
         order_ref = payment.get("gateway_order_id") or payment.get("razorpay_order_id")

@@ -110,6 +110,12 @@ class DatabaseManager:
                             );
                             CREATE INDEX IF NOT EXISTS idx_daily_settlements_date
                                 ON daily_settlements (settlement_date, event_id);
+                            CREATE INDEX IF NOT EXISTS idx_payments_status_updated
+                                ON payments (status, updated_at);
+                            CREATE INDEX IF NOT EXISTS idx_tickets_reg_created
+                                ON tickets (registration_id, created_at);
+                            CREATE INDEX IF NOT EXISTS idx_registrations_event_status
+                                ON registrations (event_id, status, created_at);
                         """)
                         conn.commit()
                 except Exception as ddl_err:
@@ -375,6 +381,12 @@ class DatabaseManager:
 
             CREATE INDEX IF NOT EXISTS idx_daily_settlements_date
                 ON daily_settlements (settlement_date, event_id);
+            CREATE INDEX IF NOT EXISTS idx_payments_status_updated
+                ON payments (status, updated_at);
+            CREATE INDEX IF NOT EXISTS idx_tickets_reg_created
+                ON tickets (registration_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_registrations_event_status
+                ON registrations (event_id, status, created_at);
         """)
         additive_columns = {
             "profiles": {
