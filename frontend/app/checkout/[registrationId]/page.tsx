@@ -8,7 +8,7 @@ import { errorMessage } from "@/lib/types";
 import type { PaymentOrder } from "@/lib/types";
 import { CreditCard, ShieldCheck, AlertCircle, Loader2, Ticket, FileText, Info, X, RefreshCw } from "lucide-react";
 import RulesModal from "@/components/RulesModal";
-import CheckoutProgressLoader from "@/components/CheckoutProgressLoader";
+import CheckoutProgressLoader, { LoaderVariant } from "@/components/CheckoutProgressLoader";
 
 interface RazorpaySuccessResponse {
   razorpay_payment_id: string;
@@ -136,7 +136,8 @@ export default function PaymentCheckoutPage() {
   const router = useRouter();
   const [order, setOrder] = useState<PaymentOrder | null>(null);
   const [loading, setLoading] = useState(true);
-  const [processing, setProcessing] = useState(false);
+  const [processingState, setProcessingState] = useState<LoaderVariant | "idle">("idle");
+  const isProcessing = processingState !== "idle";
   const [error, setError] = useState<string | null>(null);
   const [registrationToken, setRegistrationToken] = useState<string | undefined>();
   const [showRulesModal, setShowRulesModal] = useState(false);
@@ -155,7 +156,7 @@ export default function PaymentCheckoutPage() {
           const callbackGateway = searchParams.get("gateway")?.toUpperCase();
 
           if (callbackOrderId && (callbackGateway === "PHONEPE" || callbackGateway === "CASHFREE")) {
-            setProcessing(true);
+            setProcessingState("verifying_payment");
             try {
               const verifyRes = await api.verifyPayment(
                 {
@@ -182,7 +183,7 @@ export default function PaymentCheckoutPage() {
             } catch (err: unknown) {
               setError(errorMessage(err, `Verifying ${callbackGateway} payment returned an error.`));
             } finally {
-              setProcessing(false);
+              setProcessingState((prev) => (prev === "verifying_payment" ? prev : "idle"));
             }
           }
         }
@@ -238,7 +239,7 @@ export default function PaymentCheckoutPage() {
     setShowRulesModal(false);
     setError(null);
     if (!order) return;
-    setProcessing(true);
+    setProcessingState("launching");
 
     try {
       const activeGateway = (order.gateway || "RAZORPAY").toUpperCase();
@@ -254,19 +255,23 @@ export default function PaymentCheckoutPage() {
       if (activeGateway === "CASHFREE") {
         const loaded = await loadCashfreeScript();
         if (!loaded || !window.Cashfree) {
+          setProcessingState("idle");
           throw new Error("Cashfree SDK failed to load. Please check your internet connection.");
         }
         if (!order.payment_session_id) {
+          setProcessingState("idle");
           throw new Error("Cashfree payment session was not generated. Please retry.");
         }
         const cashfree = window.Cashfree({
           mode: order.environment === "production" ? "production" : "sandbox",
         });
+        setProcessingState("idle");
         const checkoutResult = await cashfree.checkout({
           paymentSessionId: order.payment_session_id,
           redirectTarget: "_modal",
         });
         if (checkoutResult?.error) {
+          setProcessingState("idle");
           const msg = checkoutResult.error.message || "Payment cancelled.";
           if (!msg.toLowerCase().includes("cancel") && !msg.toLowerCase().includes("closed")) {
             setError(msg);
@@ -275,6 +280,7 @@ export default function PaymentCheckoutPage() {
         }
 
         // If modal was completed or payment details returned, verify immediately
+        setProcessingState("verifying_payment");
         try {
           const verifyRes = await api.verifyPayment(
             {
@@ -302,6 +308,7 @@ export default function PaymentCheckoutPage() {
             return;
           }
         } catch (err: unknown) {
+          setProcessingState("idle");
           setError(errorMessage(err, "Payment could not be verified. If debited, please refresh this page."));
         }
         return;
@@ -311,14 +318,18 @@ export default function PaymentCheckoutPage() {
       if (activeGateway === "RAZORPAY") {
         const loaded = await loadRazorpayScript();
         if (!loaded) {
+          setProcessingState("idle");
           throw new Error("Razorpay SDK failed to load. Please check your internet connection.");
         }
         const Razorpay = window.Razorpay;
         if (!Razorpay) {
+          setProcessingState("idle");
           throw new Error("Razorpay SDK did not initialize. Please refresh and try again.");
         }
 
         await new Promise<void>((resolve, reject) => {
+          let isFinished = false;
+
           const rzpOptions: RazorpayOptions = {
             key: order.key_id,
             amount: Math.round(order.amount * 100),
@@ -331,6 +342,9 @@ export default function PaymentCheckoutPage() {
               razorpay_order_id: string;
               razorpay_signature: string;
             }) {
+              isFinished = true;
+              // User has completed payment! Show celebratory confirmation screen during verification gap
+              setProcessingState("verifying_payment");
               try {
                 const verifyRes = await api.verifyPayment(
                   {
@@ -360,9 +374,11 @@ export default function PaymentCheckoutPage() {
                   );
                   resolve();
                 } else {
+                  setProcessingState("idle");
                   reject(new Error("Payment verified but ticket generation failed."));
                 }
               } catch (err: unknown) {
+                setProcessingState("idle");
                 reject(new Error(errorMessage(err, "Server-side payment verification failed.")));
               }
             },
@@ -378,16 +394,27 @@ export default function PaymentCheckoutPage() {
             },
             modal: {
               ondismiss: function () {
-                reject(new Error("Payment cancelled by user."));
+                if (!isFinished) {
+                  setProcessingState("idle");
+                  reject(new Error("Payment cancelled by user."));
+                }
               },
             },
           };
 
           const rzp = new Razorpay(rzpOptions);
           rzp.on("payment.failed", function (response) {
-            reject(new Error(response.error?.description || "Payment failed."));
+            isFinished = true;
+            setProcessingState("idle");
+            reject(new Error(response.error?.description || "Payment failed or was declined by bank."));
           });
           rzp.open();
+          // Release launching overlay so the screen is not blocked behind Razorpay modal
+          setTimeout(() => {
+            if (!isFinished) {
+              setProcessingState("idle");
+            }
+          }, 600);
         });
         return;
       }
@@ -395,11 +422,11 @@ export default function PaymentCheckoutPage() {
       throw new Error(`Unsupported payment gateway: '${activeGateway || "NONE"}'`);
     } catch (err: unknown) {
       const msg = errorMessage(err, "Payment processing failed.");
-      if (!msg.includes("cancelled")) {
+      if (!msg.toLowerCase().includes("cancelled") && !msg.toLowerCase().includes("cancel")) {
         setError(msg);
       }
     } finally {
-      setProcessing(false);
+      setProcessingState((prev) => (prev === "verifying_payment" ? prev : "idle"));
     }
   };
 
@@ -417,7 +444,7 @@ export default function PaymentCheckoutPage() {
           : "Secure Gateway";
 
   if (loading) {
-    return <CheckoutProgressLoader message="Preparing Your Booking & Order..." />;
+    return <CheckoutProgressLoader variant="preparing" message="Preparing Your Booking & Order..." />;
   }
 
   const basePrice = order?.ticket_price ?? order?.amount ?? 0;
@@ -425,7 +452,7 @@ export default function PaymentCheckoutPage() {
   const showFeeRow = Boolean(order?.convenience_fee_enabled && feeAmount > 0);
 
   const handleCheckStatus = async () => {
-    setProcessing(true);
+    setProcessingState("checking_status");
     setError(null);
     try {
       const activeGateway = (order?.gateway || "RAZORPAY").toUpperCase();
@@ -439,6 +466,7 @@ export default function PaymentCheckoutPage() {
           registrationToken,
         );
         if (verifyRes.ticket_id) {
+          setProcessingState("verifying_payment");
           if (registrationToken) {
             try {
               sessionStorage.setItem(`ticket_token_${verifyRes.ticket_id}`, registrationToken);
@@ -457,6 +485,7 @@ export default function PaymentCheckoutPage() {
       // Re-init checkout which triggers backend gateway sync
       const data = await api.createPaymentOrder(registrationId, registrationToken);
       if (data.already_paid && data.ticket_id) {
+        setProcessingState("verifying_payment");
         if (registrationToken) {
           try {
             sessionStorage.setItem(`ticket_token_${data.ticket_id}`, registrationToken);
@@ -474,13 +503,15 @@ export default function PaymentCheckoutPage() {
     } catch (err: unknown) {
       setError(errorMessage(err, "Could not verify payment yet. If debited, please wait a moment and try again."));
     } finally {
-      setProcessing(false);
+      setProcessingState((prev) => (prev === "verifying_payment" ? prev : "idle"));
     }
   };
 
   return (
     <>
-      {processing && <CheckoutProgressLoader isOverlay message="Connecting to Secure Gateway..." />}
+      {processingState !== "idle" && (
+        <CheckoutProgressLoader isOverlay variant={processingState} />
+      )}
       <div className="mx-auto max-w-2xl space-y-5">
       <div className="page-hero surface-grid flex items-end justify-between gap-5 p-6 md:p-8">
         <div className="relative z-10">
@@ -506,10 +537,10 @@ export default function PaymentCheckoutPage() {
             <button
               type="button"
               onClick={handleCheckStatus}
-              disabled={processing}
+              disabled={isProcessing}
               className="button-secondary w-full !min-h-[44px] text-center flex items-center justify-center gap-2 text-xs font-bold text-amber-900 border border-amber-300 bg-amber-50 hover:bg-amber-100 cursor-pointer disabled:opacity-50"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${processing ? "animate-spin" : ""}`} />
+              <RefreshCw className={`w-3.5 h-3.5 ${isProcessing ? "animate-spin" : ""}`} />
               <span>Money debited? Click to verify payment & get ticket</span>
             </button>
             {!order && (
@@ -595,10 +626,10 @@ export default function PaymentCheckoutPage() {
         {/* Pay Button */}
         <button
           onClick={handleProceedToPayment}
-          disabled={processing || !order}
+          disabled={isProcessing || !order}
           className="button-primary button-accent w-full !min-h-[54px] disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {processing ? (
+          {isProcessing ? (
             <>
               <Loader2 className="w-5 h-5 animate-spin" />
               <span>Processing Payment...</span>
@@ -616,10 +647,10 @@ export default function PaymentCheckoutPage() {
           <button
             type="button"
             onClick={handleCheckStatus}
-            disabled={processing}
+            disabled={isProcessing}
             className="inline-flex items-center gap-1.5 text-xs text-amber-900 font-semibold hover:text-amber-950 hover:underline cursor-pointer disabled:opacity-50"
           >
-            <RefreshCw className={`w-3.5 h-3.5 text-amber-700 ${processing ? "animate-spin" : ""}`} />
+            <RefreshCw className={`w-3.5 h-3.5 text-amber-700 ${isProcessing ? "animate-spin" : ""}`} />
             <span>Already debited from bank / UPI? Click here to verify and get ticket</span>
           </button>
         </div>
@@ -645,7 +676,7 @@ export default function PaymentCheckoutPage() {
         isOpen={showRulesModal}
         onClose={() => setShowRulesModal(false)}
         onConfirm={handleProceedToPayment}
-        submitting={processing}
+        submitting={isProcessing}
       />
 
       {/* Fee Explanation Popup Modal */}

@@ -171,7 +171,7 @@ export default function EventRegistrationPage() {
 
   return (
     <>
-      {submitting && <CheckoutProgressLoader isOverlay message="Creating Your Registration..." />}
+      {submitting && <CheckoutProgressLoader isOverlay variant="registration" message="Creating Your Registration..." />}
       <div className="mx-auto max-w-5xl space-y-6">
       <Link href="/" className="inline-flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-[.13em] text-slate-600 hover:text-pink-700">
         <ArrowLeft className="h-3.5 w-3.5" /> Campus calendar
