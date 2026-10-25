@@ -78,17 +78,41 @@ class PaymentService:
                 calc_fee = round(existing_amount - ticket_price, 2) if existing_amount > ticket_price else 0.0
                 order_id = existing.get("gateway_order_id") or existing.get("razorpay_order_id")
 
-                return {
-                    "gateway": "RAZORPAY",
-                    "order_id": order_id,
-                    "key_id": config.RAZORPAY_KEY_ID,
-                    "amount": existing_amount,
-                    "ticket_price": ticket_price,
-                    "convenience_fee": calc_fee,
-                    "convenience_fee_enabled": calc_fee > 0,
-                    "currency": existing.get("currency", "INR"),
-                    "registration_id": registration_id,
-                }
+                order_valid_on_current_gateway = False
+                if not current_app.config.get("TESTING"):
+                    try:
+                        rzp_client = gw._get_client()
+                        rzp_order = rzp_client.order.fetch(order_id)
+                        if rzp_order and rzp_order.get("status") in ("created", "attempted"):
+                            order_valid_on_current_gateway = True
+                    except Exception as chk_err:
+                        current_app.logger.warning(
+                            "Existing Razorpay order %s does not exist on active merchant account (superseding): %s",
+                            order_id,
+                            chk_err,
+                        )
+                        order_valid_on_current_gateway = False
+                else:
+                    order_valid_on_current_gateway = True
+
+                if order_valid_on_current_gateway:
+                    return {
+                        "gateway": "RAZORPAY",
+                        "order_id": order_id,
+                        "key_id": config.RAZORPAY_KEY_ID,
+                        "amount": existing_amount,
+                        "ticket_price": ticket_price,
+                        "convenience_fee": calc_fee,
+                        "convenience_fee_enabled": calc_fee > 0,
+                        "currency": existing.get("currency", "INR"),
+                        "registration_id": registration_id,
+                    }
+                else:
+                    now_iso = datetime.now(timezone.utc).isoformat()
+                    db.execute_write(
+                        "UPDATE payments SET status = 'SUPERSEDED', updated_at = %s WHERE id = %s",
+                        (now_iso, existing["id"]),
+                    )
             elif existing.get("status") == "CREATED":
                 # Mark previous pending order superseded to generate a fresh order & session for Cashfree/PhonePe or when gateway changed
                 now_iso = datetime.now(timezone.utc).isoformat()
