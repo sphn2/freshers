@@ -14,9 +14,11 @@ class RazorpayGateway(BasePaymentGateway):
         return "RAZORPAY"
 
     def _get_client(self):
-        if not config.RAZORPAY_KEY_ID or not config.RAZORPAY_KEY_SECRET:
+        key_id = (config.RAZORPAY_KEY_ID or "").strip().strip("'\"")
+        key_secret = (config.RAZORPAY_KEY_SECRET or "").strip().strip("'\"")
+        if not key_id or not key_secret:
             raise ValueError("Razorpay online payments are not configured.")
-        return razorpay.Client(auth=(config.RAZORPAY_KEY_ID, config.RAZORPAY_KEY_SECRET))
+        return razorpay.Client(auth=(key_id, key_secret))
 
     def create_order(
         self,

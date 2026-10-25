@@ -406,7 +406,7 @@ export default function PaymentCheckoutPage() {
   const callbackGateway = typeof window !== "undefined"
     ? new URLSearchParams(window.location.search).get("gateway")?.toUpperCase()
     : null;
-  const currentGateway = (order?.gateway || callbackGateway || "CASHFREE").toUpperCase();
+  const currentGateway = (order?.gateway || callbackGateway || "RAZORPAY").toUpperCase();
   const gatewayName =
     currentGateway === "CASHFREE"
       ? "Cashfree"

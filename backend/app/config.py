@@ -48,15 +48,15 @@ class Config:
     SUPABASE_JWT_SECRET: str = os.getenv("SUPABASE_JWT_SECRET", "")
 
     # Razorpay Payments
-    RAZORPAY_KEY_ID: str = os.getenv("RAZORPAY_KEY_ID", "")
-    RAZORPAY_KEY_SECRET: str = os.getenv("RAZORPAY_KEY_SECRET", "")
-    RAZORPAY_WEBHOOK_SECRET: str = os.getenv("RAZORPAY_WEBHOOK_SECRET", "")
+    RAZORPAY_KEY_ID: str = os.getenv("RAZORPAY_KEY_ID", "").strip().strip("'\"")
+    RAZORPAY_KEY_SECRET: str = os.getenv("RAZORPAY_KEY_SECRET", "").strip().strip("'\"")
+    RAZORPAY_WEBHOOK_SECRET: str = os.getenv("RAZORPAY_WEBHOOK_SECRET", "").strip().strip("'\"")
 
     # Cashfree Payments
-    CASHFREE_APP_ID: str = os.getenv("CASHFREE_APP_ID", "")
-    CASHFREE_SECRET_KEY: str = os.getenv("CASHFREE_SECRET_KEY", "")
-    CASHFREE_ENV: str = os.getenv("CASHFREE_ENV", "TEST")
-    CASHFREE_API_VERSION: str = os.getenv("CASHFREE_API_VERSION", "2023-08-01")
+    CASHFREE_APP_ID: str = os.getenv("CASHFREE_APP_ID", "").strip().strip("'\"")
+    CASHFREE_SECRET_KEY: str = os.getenv("CASHFREE_SECRET_KEY", "").strip().strip("'\"")
+    CASHFREE_ENV: str = os.getenv("CASHFREE_ENV", "TEST").strip().strip("'\"")
+    CASHFREE_API_VERSION: str = os.getenv("CASHFREE_API_VERSION", "2023-08-01").strip().strip("'\"")
 
     # PhonePe Payments
     PHONEPE_MERCHANT_ID: str = os.getenv("PHONEPE_MERCHANT_ID", "")
