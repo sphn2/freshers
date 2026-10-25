@@ -4,12 +4,13 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { errorMessage } from "@/lib/types";
-import type { Event } from "@/lib/types";
+import type { Event, BannerSettings } from "@/lib/types";
 import { registrationAvailability } from "@/lib/registration";
 import { ArrowLeft, ArrowRight, CalendarDays, Check, CheckCircle2, CircleAlert, Clock, ExternalLink, Lock, MapPin, RefreshCw, ShieldCheck, Ticket, UserRoundCheck } from "lucide-react";
 import Link from "next/link";
 import RulesModal from "@/components/RulesModal";
 import VerifyPaymentModal from "@/components/VerifyPaymentModal";
+import CheckoutProgressLoader from "@/components/CheckoutProgressLoader";
 
 export default function EventRegistrationPage() {
   const { slug } = useParams<{ slug: string }>();
@@ -29,7 +30,12 @@ export default function EventRegistrationPage() {
   const [acceptedPrivacy, setAcceptedPrivacy] = useState(false);
   const [autofillStatus, setAutofillStatus] = useState<"idle" | "searching" | "verified" | "not_found">("idle");
   const [autofillError, setAutofillError] = useState<string | null>(null);
+  const [bannerSettings, setBannerSettings] = useState<BannerSettings | null>(null);
   const college = "Sphoorthy Engineering College";
+
+  useEffect(() => {
+    void api.getPublicBanners().then(setBannerSettings).catch(() => {});
+  }, []);
 
   useEffect(() => {
     async function load() {
@@ -164,7 +170,9 @@ export default function EventRegistrationPage() {
       : event.other_ticket_price;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <>
+      {submitting && <CheckoutProgressLoader isOverlay message="Creating Your Registration..." />}
+      <div className="mx-auto max-w-5xl space-y-6">
       <Link href="/" className="inline-flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-[.13em] text-slate-600 hover:text-pink-700">
         <ArrowLeft className="h-3.5 w-3.5" /> Campus calendar
       </Link>
@@ -280,6 +288,33 @@ export default function EventRegistrationPage() {
             </div>
           ) : (
             <form onSubmit={handleFormSubmit} className="mt-6 space-y-4">
+              {bannerSettings?.maintenance_mode && (
+                <div className="rounded-xl border border-amber-400 bg-amber-50 p-4 text-xs font-semibold text-amber-950 space-y-1">
+                  <div className="flex items-center gap-2 font-bold text-amber-900">
+                    <CircleAlert className="h-4 w-4 text-amber-600" />
+                    <span>Website Under Maintenance</span>
+                  </div>
+                  <p className="text-amber-800 italic font-normal">
+                    &ldquo;{bannerSettings.maintenance_mode_text}&rdquo;
+                  </p>
+                  <p className="text-[11px] text-amber-700 font-medium pt-1">
+                    Registrations are temporarily paused while we apply scheduled updates. Please check back shortly.
+                  </p>
+                </div>
+              )}
+
+              {bannerSettings?.registrations_closed && !bannerSettings?.maintenance_mode && (
+                <div className="rounded-xl border border-rose-300 bg-rose-50 p-4 text-xs font-semibold text-rose-950 space-y-1">
+                  <div className="flex items-center gap-2 font-bold text-rose-900">
+                    <CircleAlert className="h-4 w-4 text-rose-600" />
+                    <span>Registrations Closed</span>
+                  </div>
+                  <p className="text-rose-800 font-normal">
+                    {bannerSettings.registrations_closed_text}
+                  </p>
+                </div>
+              )}
+
               {error && (
                 <div role="alert" className="space-y-2 border border-rose-300 bg-rose-50 p-3.5 text-xs font-semibold text-rose-800 rounded-lg">
                   <div className="flex items-center gap-2">
@@ -494,20 +529,26 @@ export default function EventRegistrationPage() {
                   submitting ||
                   ticketPrice === null ||
                   !acceptedPrivacy ||
-                  (event.allow_autofill && autofillStatus !== "verified")
+                  (event.allow_autofill && autofillStatus !== "verified") ||
+                  Boolean(bannerSettings?.maintenance_mode) ||
+                  Boolean(bannerSettings?.registrations_closed)
                 }
                 className="button-primary button-accent mt-2 w-full !min-h-[52px] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <ShieldCheck className="h-4 w-4" />
                 {submitting
                   ? "Securing your registration…"
-                  : event.allow_autofill && autofillStatus === "searching"
-                    ? "Verifying college directory…"
-                    : event.allow_autofill && autofillStatus === "not_found"
-                      ? "Enter a valid directory roll number"
-                      : event.allow_autofill && autofillStatus === "idle"
-                        ? "Enter roll number to auto-fill details"
-                        : `Continue · ${ticketPrice === null ? "Select an eligible roll number" : ticketPrice > 0 ? `₹${ticketPrice}` : "Free admission"}`}
+                  : bannerSettings?.maintenance_mode
+                    ? "Website Under Maintenance · Paused"
+                    : bannerSettings?.registrations_closed
+                      ? "Registrations Closed · Contact Committee"
+                      : event.allow_autofill && autofillStatus === "searching"
+                        ? "Verifying college directory…"
+                        : event.allow_autofill && autofillStatus === "not_found"
+                          ? "Enter a valid directory roll number"
+                          : event.allow_autofill && autofillStatus === "idle"
+                            ? "Enter roll number to auto-fill details"
+                            : `Continue · ${ticketPrice === null ? "Select an eligible roll number" : ticketPrice > 0 ? `₹${ticketPrice}` : "Free admission"}`}
                 <ArrowRight className="h-4 w-4" />
               </button>
               <p className="text-center text-[10px] leading-5 text-slate-500">Your information is used to create and verify your event ticket.</p>
@@ -530,5 +571,6 @@ export default function EventRegistrationPage() {
         onClose={() => setShowVerifyModal(false)}
       />
     </div>
+  </>
   );
 }

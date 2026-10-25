@@ -178,7 +178,7 @@ def reconcile_and_resend():
 
         # Case 2: Registration is PENDING_PAYMENT -> Check payment gateways in real-time
         payments = db.execute_query(
-            "SELECT * FROM payments WHERE registration_id = %s AND status IN ('CREATED', 'SUPERSEDED') ORDER BY created_at DESC",
+            "SELECT * FROM payments WHERE registration_id = %s AND status IN ('CREATED', 'SUPERSEDED', 'FAILED') ORDER BY created_at DESC",
             (reg["id"],),
         )
 

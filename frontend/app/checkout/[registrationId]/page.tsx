@@ -8,6 +8,7 @@ import { errorMessage } from "@/lib/types";
 import type { PaymentOrder } from "@/lib/types";
 import { CreditCard, ShieldCheck, AlertCircle, Loader2, Ticket, FileText, Info, X, RefreshCw } from "lucide-react";
 import RulesModal from "@/components/RulesModal";
+import CheckoutProgressLoader from "@/components/CheckoutProgressLoader";
 
 interface RazorpaySuccessResponse {
   razorpay_payment_id: string;
@@ -416,12 +417,7 @@ export default function PaymentCheckoutPage() {
           : "Secure Gateway";
 
   if (loading) {
-    return (
-      <div className="min-h-[60vh] flex flex-col items-center justify-center p-8 text-center text-slate-400 font-medium gap-3">
-        <Loader2 className="w-6 h-6 animate-spin text-[#d3a52b]" />
-        <span>Initializing Secure Checkout...</span>
-      </div>
-    );
+    return <CheckoutProgressLoader message="Preparing Your Booking & Order..." />;
   }
 
   const basePrice = order?.ticket_price ?? order?.amount ?? 0;
@@ -483,7 +479,9 @@ export default function PaymentCheckoutPage() {
   };
 
   return (
-    <div className="mx-auto max-w-2xl space-y-5">
+    <>
+      {processing && <CheckoutProgressLoader isOverlay message="Connecting to Secure Gateway..." />}
+      <div className="mx-auto max-w-2xl space-y-5">
       <div className="page-hero surface-grid flex items-end justify-between gap-5 p-6 md:p-8">
         <div className="relative z-10">
           <p className="eyebrow !text-[#e5c86f]">Ticket office · Secure payment</p>
@@ -683,5 +681,6 @@ export default function PaymentCheckoutPage() {
         </div>
       )}
     </div>
+  </>
   );
 }

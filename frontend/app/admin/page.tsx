@@ -20,6 +20,7 @@ import type {
   CollectorDailyRow,
   Settlement,
   PaymentGatewaySettings,
+  BannerSettings,
 } from "@/lib/types";
 import {
   LayoutDashboard, ShieldCheck, DollarSign, Users, Ticket, Activity,
@@ -27,7 +28,8 @@ import {
   CreditCard, Banknote, Settings, AlertCircle, Pause, Play, CalendarClock,
   UserRoundPlus, KeyRound, Mail, Edit3, Search, X,
   Database, UploadCloud, Download, Trash2, Lock, FileUp,
-  TrendingUp, BarChart3, Receipt, Printer, CheckSquare, Building2
+  TrendingUp, BarChart3, Receipt, Printer, CheckSquare, Building2,
+  Megaphone, Wrench, AlertOctagon
 } from "lucide-react";
 
 export default function AdminDashboardPage() {
@@ -111,6 +113,14 @@ function AdminDashboardContent() {
   const [feeEnabledDraft, setFeeEnabledDraft] = useState<boolean>(true);
   const [savingFeeSettings, setSavingFeeSettings] = useState<boolean>(false);
 
+  // Announcement Banners state (Admin & Super Admin)
+  const [bannerSettings, setBannerSettings] = useState<BannerSettings | null>(null);
+  const [closedBannerDraft, setClosedBannerDraft] = useState<boolean>(false);
+  const [closedTextDraft, setClosedTextDraft] = useState<string>("");
+  const [maintBannerDraft, setMaintBannerDraft] = useState<boolean>(false);
+  const [maintTextDraft, setMaintTextDraft] = useState<string>("");
+  const [savingBannerSettings, setSavingBannerSettings] = useState<boolean>(false);
+
   // Student Directory state
   const [directoryStudents, setDirectoryStudents] = useState<StudentDirectoryEntry[]>([]);
   const [directoryTotal, setDirectoryTotal] = useState(0);
@@ -183,12 +193,59 @@ function AdminDashboardContent() {
     }
   };
 
+  const loadBannerSettings = async () => {
+    try {
+      const data = await api.getAdminBannerSettings();
+      setBannerSettings(data);
+      setClosedBannerDraft(data.registrations_closed);
+      setClosedTextDraft(data.registrations_closed_text);
+      setMaintBannerDraft(data.maintenance_mode);
+      setMaintTextDraft(data.maintenance_mode_text);
+    } catch {
+      // silent
+    }
+  };
+
+  const handleSaveBannerSettings = async (overrides?: {
+    registrations_closed?: boolean;
+    maintenance_mode?: boolean;
+  }) => {
+    setSavingBannerSettings(true);
+    try {
+      const nextClosed = overrides?.registrations_closed !== undefined ? overrides.registrations_closed : closedBannerDraft;
+      const payload: Partial<BannerSettings> = {
+        registrations_closed: nextClosed,
+        registrations_closed_text: closedTextDraft,
+      };
+      if (isSuperAdmin) {
+        const nextMaint = overrides?.maintenance_mode !== undefined ? overrides.maintenance_mode : maintBannerDraft;
+        payload.maintenance_mode = nextMaint;
+        payload.maintenance_mode_text = maintTextDraft;
+      }
+      const res = await api.updateBannerSettings(payload);
+      setBannerSettings(res.settings);
+      setClosedBannerDraft(res.settings.registrations_closed);
+      setClosedTextDraft(res.settings.registrations_closed_text);
+      setMaintBannerDraft(res.settings.maintenance_mode);
+      setMaintTextDraft(res.settings.maintenance_mode_text);
+      setStatusMsg(`✅ ${res.message}`);
+    } catch (err: unknown) {
+      setStatusMsg(`❌ ${errorMessage(err, "Failed updating announcement banner settings.")}`);
+      void loadBannerSettings();
+    } finally {
+      setSavingBannerSettings(false);
+    }
+  };
+
   useEffect(() => {
+    if (isAdmin) {
+      void loadBannerSettings();
+    }
     if (isSuperAdmin) {
       void loadFeeSettings();
       void loadGatewaySettings();
     }
-  }, [isSuperAdmin]);
+  }, [isAdmin, isSuperAdmin]);
 
   const handleUpdateDefaultGateway = async (gatewayName: string) => {
     if (!isSuperAdmin) return;
@@ -959,6 +1016,191 @@ function AdminDashboardContent() {
               <div className="text-2xl font-black text-slate-900 mt-1">{metrics?.total_tickets || 0}</div>
             </div>
           </div>
+
+          {/* Announcement & Emergency Banners Controller (ADMIN & SUPER ADMIN) */}
+          {isAdmin && (
+            <div className="panel space-y-5 p-5 md:p-6 bg-gradient-to-br from-slate-900 via-[#16201b] to-slate-900 text-white border border-amber-300/30 shadow-md">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-400/20 text-amber-300 border border-amber-400/30">
+                    <Megaphone className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white">Live Site Banners & Operations Control</h3>
+                    <p className="text-xs text-slate-300">
+                      Toggle emergency announcements, registration pause, and maintenance banners across the public website.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => loadBannerSettings()}
+                    disabled={savingBannerSettings}
+                    className="button-secondary !py-1.5 !px-3 !text-xs text-slate-200 border-white/20 bg-white/5 hover:bg-white/10 flex items-center gap-1.5"
+                    title="Refresh status"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${savingBannerSettings ? "animate-spin" : ""}`} />
+                    <span>Sync Live Status</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid gap-5 lg:grid-cols-2">
+                {/* 1. Registrations Closed Banner (Admin + Super Admin) */}
+                <div className="rounded-2xl border border-rose-500/30 bg-[#250d12]/80 p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <AlertOctagon className="h-4 w-4 text-rose-400 shrink-0" />
+                      <div>
+                        <h4 className="text-xs font-bold text-rose-200 uppercase tracking-wide">
+                          Registrations Closed Banner
+                        </h4>
+                        <p className="text-[10px] text-rose-300/80">Toggleable by Admin & Super Admin</p>
+                      </div>
+                    </div>
+                    <label htmlFor="toggle-closed-banner" className="relative inline-flex cursor-pointer items-center">
+                      <input
+                        id="toggle-closed-banner"
+                        type="checkbox"
+                        checked={closedBannerDraft}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          setClosedBannerDraft(checked);
+                          void handleSaveBannerSettings({ registrations_closed: checked });
+                        }}
+                        disabled={savingBannerSettings}
+                        className="sr-only peer"
+                      />
+                      <div className="h-6 w-11 rounded-full bg-slate-700 peer-checked:bg-rose-600 peer-focus:outline-none transition-colors after:absolute after:top-[2px] after:left-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all peer-checked:after:translate-x-full" />
+                    </label>
+                  </div>
+
+                  <div className="flex items-center justify-between text-[11px] pt-1">
+                    <span className="text-slate-400 font-medium">Public Status:</span>
+                    <span className={`px-2.5 py-0.5 rounded-full font-bold text-[10px] border ${
+                      closedBannerDraft
+                        ? "bg-rose-500/20 text-rose-300 border-rose-500/40"
+                        : "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                    }`}>
+                      {closedBannerDraft ? "REGISTRATIONS CLOSED (BANNER ON)" : "REGISTRATIONS OPEN"}
+                    </span>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label htmlFor="closed-banner-text" className="text-[11px] font-semibold text-slate-300">
+                      Banner Message / Helpline Notice:
+                    </label>
+                    <textarea
+                      id="closed-banner-text"
+                      rows={2}
+                      value={closedTextDraft}
+                      onChange={(e) => setClosedTextDraft(e.target.value)}
+                      placeholder="Registrations are closed. For more details or spot registrations, contact the Freshers Organizing Team."
+                      className="w-full rounded-lg border border-rose-500/30 bg-black/40 px-3 py-1.5 text-xs text-rose-100 placeholder-rose-300/40 focus:border-rose-400 focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="text-right">
+                    <button
+                      type="button"
+                      onClick={() => handleSaveBannerSettings()}
+                      disabled={savingBannerSettings}
+                      className="button-primary !min-h-[32px] !px-3 !text-xs !bg-rose-700 hover:!bg-rose-600 border border-rose-400/40 text-white font-bold"
+                    >
+                      {savingBannerSettings ? "Saving..." : "Save Closed Notice"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* 2. Website Under Maintenance Mode (Super Admin Only) */}
+                <div className={`rounded-2xl border p-4 space-y-3 ${
+                  isSuperAdmin
+                    ? "border-amber-500/30 bg-[#291e0a]/80"
+                    : "border-slate-800 bg-slate-900/60 opacity-60"
+                }`}>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <Wrench className="h-4 w-4 text-amber-400 shrink-0" />
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-xs font-bold text-amber-200 uppercase tracking-wide">
+                            Website Maintenance Mode
+                          </h4>
+                          {!isSuperAdmin && (
+                            <span className="inline-flex items-center gap-1 rounded bg-slate-800 px-1.5 py-0.5 text-[9px] font-bold text-slate-400">
+                              <Lock className="h-2.5 w-2.5" /> Super Admin Only
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-amber-300/80">
+                          {isSuperAdmin
+                            ? "Toggle ON when redeploying or applying system changes"
+                            : "Restricted to Super Admin role"}
+                        </p>
+                      </div>
+                    </div>
+
+                    <label htmlFor="toggle-maint-banner" className={`relative inline-flex items-center ${isSuperAdmin ? "cursor-pointer" : "cursor-not-allowed"}`}>
+                      <input
+                        id="toggle-maint-banner"
+                        type="checkbox"
+                        checked={maintBannerDraft}
+                        disabled={!isSuperAdmin || savingBannerSettings}
+                        onChange={(e) => {
+                          if (!isSuperAdmin) return;
+                          const checked = e.target.checked;
+                          setMaintBannerDraft(checked);
+                          void handleSaveBannerSettings({ maintenance_mode: checked });
+                        }}
+                        className="sr-only peer"
+                      />
+                      <div className="h-6 w-11 rounded-full bg-slate-700 peer-checked:bg-amber-500 peer-focus:outline-none transition-colors after:absolute after:top-[2px] after:left-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all peer-checked:after:translate-x-full" />
+                    </label>
+                  </div>
+
+                  <div className="flex items-center justify-between text-[11px] pt-1">
+                    <span className="text-slate-400 font-medium">Public Status:</span>
+                    <span className={`px-2.5 py-0.5 rounded-full font-bold text-[10px] border ${
+                      maintBannerDraft
+                        ? "bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse"
+                        : "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                    }`}>
+                      {maintBannerDraft ? "MAINTENANCE ACTIVE (REDEPLOY MODE)" : "SITE OPERATIONAL"}
+                    </span>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label htmlFor="maint-banner-text" className="text-[11px] font-semibold text-slate-300">
+                      Maintenance Quote & Reassurance Text:
+                    </label>
+                    <textarea
+                      id="maint-banner-text"
+                      rows={2}
+                      disabled={!isSuperAdmin}
+                      value={maintTextDraft}
+                      onChange={(e) => setMaintTextDraft(e.target.value)}
+                      placeholder="Website is Under Maintenance. This maintenance is to ensure your seamless experience and proper security. The website will be live within 10-15 minutes."
+                      className="w-full rounded-lg border border-amber-500/30 bg-black/40 px-3 py-1.5 text-xs text-amber-100 placeholder-amber-300/40 focus:border-amber-400 focus:outline-none disabled:opacity-50"
+                    />
+                  </div>
+
+                  {isSuperAdmin && (
+                    <div className="text-right">
+                      <button
+                        type="button"
+                        onClick={() => handleSaveBannerSettings()}
+                        disabled={savingBannerSettings}
+                        className="button-primary !min-h-[32px] !px-3 !text-xs !bg-amber-500 hover:!bg-amber-400 border border-amber-300/40 text-black font-bold"
+                      >
+                        {savingBannerSettings ? "Saving..." : "Save Maintenance Mode"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* GST & Convenience Fee Settings Panel (SUPER ADMIN ONLY) */}
           {isSuperAdmin && (

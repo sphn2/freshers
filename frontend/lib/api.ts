@@ -26,6 +26,7 @@ import type {
   PaymentGatewaySettings,
   CollectorDailyRow,
   Settlement,
+  BannerSettings,
 } from "@/lib/types";
 
 export async function apiFetch<T>(
@@ -472,4 +473,13 @@ export const api = {
         body: JSON.stringify(payload),
       },
     ),
+
+  // ─── Announcement Banners ──────────────────────────────────────────────────
+  getPublicBanners: () => apiFetch<BannerSettings>("/banners"),
+  getAdminBannerSettings: () => apiFetch<BannerSettings>("/admin/settings/banners"),
+  updateBannerSettings: (payload: Partial<BannerSettings>) =>
+    apiFetch<{ message: string; settings: BannerSettings }>("/admin/settings/banners", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
 };

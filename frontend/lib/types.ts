@@ -342,3 +342,10 @@ export interface Settlement {
   created_at: string;
   updated_at?: string | null;
 }
+
+export interface BannerSettings {
+  registrations_closed: boolean;
+  registrations_closed_text: string;
+  maintenance_mode: boolean;
+  maintenance_mode_text: string;
+}

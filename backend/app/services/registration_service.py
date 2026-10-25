@@ -62,6 +62,13 @@ class RegistrationService:
             if not event.get("allow_online"):
                 raise ValueError("Online registration is disabled for this event.")
 
+            from app.services.system_settings_service import system_settings_service
+            banner_settings = system_settings_service.get_banner_settings()
+            if banner_settings.get("maintenance_mode"):
+                raise ValueError("The website is currently under maintenance. Registrations are temporarily paused.")
+            if banner_settings.get("registrations_closed"):
+                raise ValueError(banner_settings.get("registrations_closed_text") or "Registrations are closed.")
+
             # If autofill/prefill is enabled for this event, enforce verified student directory data
             if event.get("allow_autofill"):
                 student_record = db.execute_one(

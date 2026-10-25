@@ -48,7 +48,7 @@ class PaymentService:
         gw = gateway_factory.get_gateway(reg.get("payment_gateway"))
 
         existing = db.execute_one(
-            "SELECT * FROM payments WHERE registration_id = %s AND status IN ('CREATED', 'SUPERSEDED') ORDER BY created_at DESC",
+            "SELECT * FROM payments WHERE registration_id = %s AND status IN ('CREATED', 'SUPERSEDED', 'FAILED') ORDER BY created_at DESC",
             (registration_id,),
         )
         if existing:
@@ -352,7 +352,7 @@ class PaymentService:
                 "ticket_id": ticket["id"],
                 "ticket_code": ticket["ticket_code"],
             }
-        if payment["status"] not in ("CREATED", "SUPERSEDED"):
+        if payment["status"] not in ("CREATED", "SUPERSEDED", "FAILED"):
             raise ValueError("Payment is not eligible for fulfillment.")
 
         now = datetime.now(timezone.utc).isoformat()
@@ -361,7 +361,7 @@ class PaymentService:
                SET razorpay_payment_id = %s, razorpay_signature = %s,
                    gateway_payment_id = %s, gateway_signature = %s,
                    status = 'PAID', updated_at = %s
-               WHERE id = %s AND status IN ('CREATED', 'SUPERSEDED')""",
+               WHERE id = %s AND status IN ('CREATED', 'SUPERSEDED', 'FAILED')""",
             (payment_id, signature, payment_id, signature, now, payment["id"]),
         )
         if not updated:

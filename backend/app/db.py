@@ -72,6 +72,19 @@ class DatabaseManager:
                             VALUES ('phonepe_enabled', 'true', NOW()::text)
                             ON CONFLICT(key) DO NOTHING;
 
+                            INSERT INTO system_settings (key, value, updated_at)
+                            VALUES ('banner_registrations_closed', 'false', NOW()::text)
+                            ON CONFLICT(key) DO NOTHING;
+                            INSERT INTO system_settings (key, value, updated_at)
+                            VALUES ('banner_registrations_closed_text', 'Registrations are closed. For more details or spot registrations, contact the Freshers Organizing Team.', NOW()::text)
+                            ON CONFLICT(key) DO NOTHING;
+                            INSERT INTO system_settings (key, value, updated_at)
+                            VALUES ('banner_maintenance_mode', 'false', NOW()::text)
+                            ON CONFLICT(key) DO NOTHING;
+                            INSERT INTO system_settings (key, value, updated_at)
+                            VALUES ('banner_maintenance_mode_text', 'Website is Under Maintenance. This maintenance is to ensure your seamless experience and proper security. The website will be live within 10-15 minutes.', NOW()::text)
+                            ON CONFLICT(key) DO NOTHING;
+
                             CREATE TABLE IF NOT EXISTS daily_settlements (
                                 id TEXT PRIMARY KEY,
                                 event_id TEXT,
@@ -478,6 +491,30 @@ class DatabaseManager:
         self.execute_write(
             """INSERT INTO system_settings (key, value, updated_at)
                VALUES ('phonepe_enabled', 'true', ?)
+               ON CONFLICT(key) DO NOTHING""",
+            (now_iso,)
+        )
+        self.execute_write(
+            """INSERT INTO system_settings (key, value, updated_at)
+               VALUES ('banner_registrations_closed', 'false', ?)
+               ON CONFLICT(key) DO NOTHING""",
+            (now_iso,)
+        )
+        self.execute_write(
+            """INSERT INTO system_settings (key, value, updated_at)
+               VALUES ('banner_registrations_closed_text', 'Registrations are closed. For more details or spot registrations, contact the Freshers Organizing Team.', ?)
+               ON CONFLICT(key) DO NOTHING""",
+            (now_iso,)
+        )
+        self.execute_write(
+            """INSERT INTO system_settings (key, value, updated_at)
+               VALUES ('banner_maintenance_mode', 'false', ?)
+               ON CONFLICT(key) DO NOTHING""",
+            (now_iso,)
+        )
+        self.execute_write(
+            """INSERT INTO system_settings (key, value, updated_at)
+               VALUES ('banner_maintenance_mode_text', 'Website is Under Maintenance. This maintenance is to ensure your seamless experience and proper security. The website will be live within 10-15 minutes.', ?)
                ON CONFLICT(key) DO NOTHING""",
             (now_iso,)
         )

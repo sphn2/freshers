@@ -25,6 +25,7 @@ import {
   Scale,
 } from "lucide-react";
 import VerifyPaymentModal from "@/components/VerifyPaymentModal";
+import SiteBanners from "@/components/SiteBanners";
 
 export function SiteProviderFrame({ children }: { children: React.ReactNode }) {
   return (
@@ -85,6 +86,9 @@ function SiteFrame({ children }: { children: React.ReactNode }) {
 
   return (
     <>
+      {/* Dynamic Announcement & Maintenance Banners */}
+      <SiteBanners />
+
       {/* Top Utility & Corporate Compliance Bar */}
       <div className="bg-[#101915] text-[#d6cfbe] text-[11px] border-b border-white/10 px-4 py-2 sm:py-1.5 transition-colors">
         <div className="mx-auto max-w-[1240px] flex flex-col md:flex-row items-center justify-between gap-2">

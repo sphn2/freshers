@@ -633,6 +633,42 @@ def manage_payment_gateways_settings():
         except Exception:
             return internal_error("updating payment gateway settings")
 
+@admin_bp.route("/settings/banners", methods=["GET", "PUT"])
+@require_roles("SUPER_ADMIN", "ADMIN")
+def manage_banner_settings():
+    if request.method == "GET":
+        try:
+            settings = system_settings_service.get_banner_settings()
+            return jsonify(settings), 200
+        except Exception:
+            return internal_error("fetching banner settings")
+    elif request.method == "PUT":
+        try:
+            body = request.get_json() or {}
+            registrations_closed = body.get("registrations_closed")
+            registrations_closed_text = body.get("registrations_closed_text")
+            maintenance_mode = body.get("maintenance_mode")
+            maintenance_mode_text = body.get("maintenance_mode_text")
+            roles = getattr(g, "user_roles", [])
+
+            updated = system_settings_service.update_banner_settings(
+                registrations_closed=registrations_closed if isinstance(registrations_closed, bool) else None,
+                registrations_closed_text=registrations_closed_text if isinstance(registrations_closed_text, str) else None,
+                maintenance_mode=maintenance_mode if isinstance(maintenance_mode, bool) else None,
+                maintenance_mode_text=maintenance_mode_text if isinstance(maintenance_mode_text, str) else None,
+                roles=roles,
+            )
+            return jsonify({
+                "message": "Announcement banner settings updated successfully.",
+                "settings": updated,
+            }), 200
+        except PermissionError as e:
+            return jsonify({"error": str(e)}), 403
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        except Exception:
+            return internal_error("updating banner settings")
+
 from app.services.student_directory_service import student_directory_service
 import io
 
