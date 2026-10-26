@@ -286,19 +286,40 @@ export function errorMessage(error: unknown, fallback: string): string {
 export interface DailyRevenueRow {
   date: string;
   channel: "ONLINE" | "CASH";
+  first_year_tickets: number;
+  second_year_tickets: number;
+  other_tickets?: number;
   tickets_issued: number;
   amount: number;
+  convenience_fee?: number;
+  gross_amount?: number;
+  cumulative_first_year_tickets?: number;
+  cumulative_second_year_tickets?: number;
   cumulative_tickets: number;
   cumulative_amount: number;
+  cumulative_convenience_fee?: number;
+  cumulative_gross_amount?: number;
 }
 
 export interface DailyRevenueTotals {
+  total_online_first_year_tickets?: number;
+  total_online_second_year_tickets?: number;
   total_online_tickets: number;
   total_online_amount: number;
+  total_online_convenience_fee?: number;
+  total_online_gross_amount?: number;
+  total_cash_first_year_tickets?: number;
+  total_cash_second_year_tickets?: number;
   total_cash_tickets: number;
   total_cash_amount: number;
+  total_cash_convenience_fee?: number;
+  total_cash_gross_amount?: number;
+  total_first_year_tickets?: number;
+  total_second_year_tickets?: number;
   total_tickets: number;
   total_amount: number;
+  total_convenience_fee?: number;
+  total_gross_amount?: number;
 }
 
 export interface DailyRevenueReport {

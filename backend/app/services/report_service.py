@@ -252,8 +252,13 @@ class ReportService:
 
         online_rows = db.execute_query(
             f"""SELECT substr({pay_date_expr}::text, 1, 10) as day,
+                       COUNT(DISTINCT CASE WHEN SUBSTR(UPPER(TRIM(COALESCE(r.roll_number, ''))), 1, 2) = '26' THEN t.id END) as first_year_tickets,
+                       COUNT(DISTINCT CASE WHEN SUBSTR(UPPER(TRIM(COALESCE(r.roll_number, ''))), 1, 2) = '25' THEN t.id END) as second_year_tickets,
+                       COUNT(DISTINCT CASE WHEN SUBSTR(UPPER(TRIM(COALESCE(r.roll_number, ''))), 1, 2) NOT IN ('25', '26') THEN t.id END) as other_tickets,
                        COUNT(DISTINCT t.id) as tickets_issued,
-                       COALESCE(SUM(p.amount), 0) as amount
+                       COALESCE(SUM(r.ticket_price), 0) as amount,
+                       COALESCE(SUM(p.amount - r.ticket_price), 0) as convenience_fee,
+                       COALESCE(SUM(p.amount), 0) as gross_amount
                 FROM payments p
                 JOIN registrations r ON p.registration_id = r.id
                 LEFT JOIN tickets t ON r.id = t.registration_id
@@ -266,8 +271,13 @@ class ReportService:
         # --- CASH rows: from offline_collections ---
         cash_rows = db.execute_query(
             f"""SELECT substr(oc.created_at::text, 1, 10) as day,
+                       COUNT(DISTINCT CASE WHEN SUBSTR(UPPER(TRIM(COALESCE(r.roll_number, ''))), 1, 2) = '26' THEN t.id END) as first_year_tickets,
+                       COUNT(DISTINCT CASE WHEN SUBSTR(UPPER(TRIM(COALESCE(r.roll_number, ''))), 1, 2) = '25' THEN t.id END) as second_year_tickets,
+                       COUNT(DISTINCT CASE WHEN SUBSTR(UPPER(TRIM(COALESCE(r.roll_number, ''))), 1, 2) NOT IN ('25', '26') THEN t.id END) as other_tickets,
                        COUNT(DISTINCT t.id) as tickets_issued,
-                       COALESCE(SUM(oc.amount), 0) as amount
+                       COALESCE(SUM(oc.amount), 0) as amount,
+                       0.0 as convenience_fee,
+                       COALESCE(SUM(oc.amount), 0) as gross_amount
                 FROM offline_collections oc
                 JOIN registrations r ON oc.registration_id = r.id
                 LEFT JOIN tickets t ON r.id = t.registration_id
@@ -280,18 +290,42 @@ class ReportService:
         # Build cumulative running totals for each channel
         def add_cumulative(rows, channel):
             cum_tickets = 0
+            cum_first = 0
+            cum_second = 0
             cum_amount = 0.0
+            cum_fee = 0.0
+            cum_gross = 0.0
             result = []
             for row in rows:
-                cum_tickets += int(row.get("tickets_issued") or 0)
-                cum_amount += float(row.get("amount") or 0)
+                first_cnt = int(row.get("first_year_tickets") or 0)
+                second_cnt = int(row.get("second_year_tickets") or 0)
+                other_cnt = int(row.get("other_tickets") or 0)
+                t_issued = int(row.get("tickets_issued") or 0)
+                amt = float(row.get("amount") or 0)
+                fee = float(row.get("convenience_fee") or 0)
+                gross = float(row.get("gross_amount") or (amt + fee))
+                cum_first += first_cnt
+                cum_second += second_cnt
+                cum_tickets += t_issued
+                cum_amount += amt
+                cum_fee += fee
+                cum_gross += gross
                 result.append({
                     "date": row["day"],
                     "channel": channel,
-                    "tickets_issued": int(row.get("tickets_issued") or 0),
-                    "amount": float(row.get("amount") or 0),
+                    "first_year_tickets": first_cnt,
+                    "second_year_tickets": second_cnt,
+                    "other_tickets": other_cnt,
+                    "tickets_issued": t_issued,
+                    "amount": round(amt, 2),
+                    "convenience_fee": round(fee, 2),
+                    "gross_amount": round(gross, 2),
+                    "cumulative_first_year_tickets": cum_first,
+                    "cumulative_second_year_tickets": cum_second,
                     "cumulative_tickets": cum_tickets,
                     "cumulative_amount": round(cum_amount, 2),
+                    "cumulative_convenience_fee": round(cum_fee, 2),
+                    "cumulative_gross_amount": round(cum_gross, 2),
                 })
             return result
 
@@ -299,21 +333,49 @@ class ReportService:
         cash_data = add_cumulative(cash_rows, "CASH")
 
         # Grand totals
+        total_online_first_year_tickets = sum(r["first_year_tickets"] for r in online_data)
+        total_online_second_year_tickets = sum(r["second_year_tickets"] for r in online_data)
         total_online_tickets = sum(r["tickets_issued"] for r in online_data)
         total_online_amount = sum(r["amount"] for r in online_data)
+        total_online_convenience_fee = sum(r["convenience_fee"] for r in online_data)
+        total_online_gross_amount = sum(r["gross_amount"] for r in online_data)
+
+        total_cash_first_year_tickets = sum(r["first_year_tickets"] for r in cash_data)
+        total_cash_second_year_tickets = sum(r["second_year_tickets"] for r in cash_data)
         total_cash_tickets = sum(r["tickets_issued"] for r in cash_data)
         total_cash_amount = sum(r["amount"] for r in cash_data)
+        total_cash_convenience_fee = sum(r["convenience_fee"] for r in cash_data)
+        total_cash_gross_amount = sum(r["gross_amount"] for r in cash_data)
+
+        total_first_year_tickets = total_online_first_year_tickets + total_cash_first_year_tickets
+        total_second_year_tickets = total_online_second_year_tickets + total_cash_second_year_tickets
+        total_tickets = total_online_tickets + total_cash_tickets
+        total_amount = round(total_online_amount + total_cash_amount, 2)
+        total_convenience_fee = round(total_online_convenience_fee + total_cash_convenience_fee, 2)
+        total_gross_amount = round(total_online_gross_amount + total_cash_gross_amount, 2)
 
         return {
             "online": online_data,
             "cash": cash_data,
             "totals": {
+                "total_online_first_year_tickets": total_online_first_year_tickets,
+                "total_online_second_year_tickets": total_online_second_year_tickets,
                 "total_online_tickets": total_online_tickets,
                 "total_online_amount": round(total_online_amount, 2),
+                "total_online_convenience_fee": round(total_online_convenience_fee, 2),
+                "total_online_gross_amount": round(total_online_gross_amount, 2),
+                "total_cash_first_year_tickets": total_cash_first_year_tickets,
+                "total_cash_second_year_tickets": total_cash_second_year_tickets,
                 "total_cash_tickets": total_cash_tickets,
                 "total_cash_amount": round(total_cash_amount, 2),
-                "total_tickets": total_online_tickets + total_cash_tickets,
-                "total_amount": round(total_online_amount + total_cash_amount, 2),
+                "total_cash_convenience_fee": round(total_cash_convenience_fee, 2),
+                "total_cash_gross_amount": round(total_cash_gross_amount, 2),
+                "total_first_year_tickets": total_first_year_tickets,
+                "total_second_year_tickets": total_second_year_tickets,
+                "total_tickets": total_tickets,
+                "total_amount": total_amount,
+                "total_convenience_fee": total_convenience_fee,
+                "total_gross_amount": total_gross_amount,
             }
         }
 

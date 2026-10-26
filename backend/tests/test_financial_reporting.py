@@ -125,6 +125,8 @@ def test_daily_revenue_report_and_collector_breakdown(sample_event):
     online_row = [r for r in report["online"] if r["date"] == today_date][0]
     assert online_row["channel"] == "ONLINE"
     assert online_row["tickets_issued"] >= 1
+    assert online_row["first_year_tickets"] >= 1
+    assert online_row["second_year_tickets"] == 0
     assert online_row["amount"] >= 500.0
     assert online_row["cumulative_tickets"] >= 1
     assert online_row["cumulative_amount"] >= 500.0
@@ -133,13 +135,19 @@ def test_daily_revenue_report_and_collector_breakdown(sample_event):
     cash_row = [r for r in report["cash"] if r["date"] == today_date][0]
     assert cash_row["channel"] == "CASH"
     assert cash_row["tickets_issued"] >= 1
+    assert cash_row["first_year_tickets"] >= 1
+    assert cash_row["second_year_tickets"] == 0
     assert cash_row["amount"] >= 500.0
     assert cash_row["cumulative_tickets"] >= 1
     assert cash_row["cumulative_amount"] >= 500.0
 
     assert report["totals"]["total_online_tickets"] >= 1
+    assert report["totals"]["total_online_first_year_tickets"] >= 1
     assert report["totals"]["total_cash_tickets"] >= 1
+    assert report["totals"]["total_cash_first_year_tickets"] >= 1
     assert report["totals"]["total_tickets"] >= 2
+    assert report["totals"]["total_first_year_tickets"] >= 2
+    assert report["totals"]["total_second_year_tickets"] == 0
     assert report["totals"]["total_amount"] >= 1000.0
 
     # 4. Test report_service.get_daily_collector_breakdown

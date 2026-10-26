@@ -3087,22 +3087,34 @@ function AdminDashboardContent() {
 
               {/* Grand total summary cards */}
               {dailyRevenue && (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                   <div className="panel p-4 bg-gradient-to-br from-emerald-50 to-green-50 border-emerald-200">
-                    <div className="text-[10px] font-extrabold uppercase text-emerald-700">Online Tickets</div>
+                    <div className="text-[10px] font-extrabold uppercase text-emerald-700">Online Tickets Issued</div>
                     <div className="text-2xl font-black text-emerald-800 mt-1">{dailyRevenue.totals.total_online_tickets}</div>
+                    <div className="text-[11px] font-semibold text-emerald-600 mt-1">
+                      1st Yr: {dailyRevenue.totals.total_online_first_year_tickets ?? 0} &bull; 2nd Yr: {dailyRevenue.totals.total_online_second_year_tickets ?? 0}
+                    </div>
                   </div>
                   <div className="panel p-4 bg-gradient-to-br from-emerald-50 to-teal-50 border-emerald-200">
-                    <div className="text-[10px] font-extrabold uppercase text-emerald-700">Online Revenue</div>
+                    <div className="text-[10px] font-extrabold uppercase text-emerald-700">Institution Online Revenue</div>
                     <div className="text-2xl font-black text-emerald-800 mt-1">₹{dailyRevenue.totals.total_online_amount.toLocaleString()}</div>
+                    <div className="text-[11px] font-semibold text-emerald-600 mt-1">
+                      ₹500 / ₹600 Base Ticket Share
+                    </div>
                   </div>
                   <div className="panel p-4 bg-gradient-to-br from-pink-50 to-rose-50 border-pink-200">
-                    <div className="text-[10px] font-extrabold uppercase text-pink-700">Cash Tickets</div>
-                    <div className="text-2xl font-black text-pink-800 mt-1">{dailyRevenue.totals.total_cash_tickets}</div>
-                  </div>
-                  <div className="panel p-4 bg-gradient-to-br from-pink-50 to-rose-50 border-pink-200">
-                    <div className="text-[10px] font-extrabold uppercase text-pink-700">Cash Revenue</div>
+                    <div className="text-[10px] font-extrabold uppercase text-pink-700">Offline Cash Revenue</div>
                     <div className="text-2xl font-black text-pink-800 mt-1">₹{dailyRevenue.totals.total_cash_amount.toLocaleString()}</div>
+                    <div className="text-[11px] font-semibold text-pink-600 mt-1">
+                      {dailyRevenue.totals.total_cash_tickets} tickets (1st: {dailyRevenue.totals.total_cash_first_year_tickets ?? 0}, 2nd: {dailyRevenue.totals.total_cash_second_year_tickets ?? 0})
+                    </div>
+                  </div>
+                  <div className="panel p-4 bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200">
+                    <div className="text-[10px] font-extrabold uppercase text-amber-700">Rudvay Tech &bull; GST &amp; Convenience</div>
+                    <div className="text-2xl font-black text-amber-900 mt-1">₹{(dailyRevenue.totals.total_convenience_fee ?? 0).toLocaleString()}</div>
+                    <div className="text-[11px] font-semibold text-amber-700 mt-1">
+                      ₹3.79 per transaction ({dailyRevenue.totals.total_online_tickets} online payments)
+                    </div>
                   </div>
                 </div>
               )}
@@ -3112,11 +3124,21 @@ function AdminDashboardContent() {
                 <div className="panel p-4 flex flex-wrap justify-between items-center gap-4 bg-gradient-to-r from-violet-50 to-indigo-50 border-violet-200">
                   <div>
                     <div className="text-[10px] font-extrabold uppercase text-violet-700">Total Tickets Issued (All Channels)</div>
-                    <div className="text-3xl font-black text-violet-900 mt-0.5">{dailyRevenue.totals.total_tickets}</div>
+                    <div className="flex items-baseline gap-3 mt-1">
+                      <div className="text-3xl font-black text-violet-900">{dailyRevenue.totals.total_tickets}</div>
+                      <div className="flex items-center gap-2 text-xs font-bold text-violet-800 bg-violet-100/90 px-3 py-1 rounded-lg border border-violet-200">
+                        <span>1st Year: <span className="text-violet-950 font-black">{dailyRevenue.totals.total_first_year_tickets ?? 0}</span></span>
+                        <span className="text-violet-400">|</span>
+                        <span>2nd Year: <span className="text-violet-950 font-black">{dailyRevenue.totals.total_second_year_tickets ?? 0}</span></span>
+                      </div>
+                    </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-[10px] font-extrabold uppercase text-violet-700">Total Amount Collected</div>
+                    <div className="text-[10px] font-extrabold uppercase text-violet-700">Institution Total (Excluding Fee)</div>
                     <div className="text-3xl font-black text-violet-900 mt-0.5">₹{dailyRevenue.totals.total_amount.toLocaleString()}</div>
+                    <div className="text-[11px] font-semibold text-slate-500 mt-0.5">
+                      Gross Collected: ₹{(dailyRevenue.totals.total_gross_amount ?? dailyRevenue.totals.total_amount).toLocaleString()} &bull; Rudvay Fee: ₹{(dailyRevenue.totals.total_convenience_fee ?? 0).toLocaleString()}
+                    </div>
                   </div>
                 </div>
               )}
@@ -3137,10 +3159,18 @@ function AdminDashboardContent() {
                     <thead className="sticky top-0 bg-slate-50 border-b border-slate-200">
                       <tr>
                         <th className="px-4 py-3 text-left font-extrabold text-slate-700">Date</th>
-                        <th className="px-4 py-3 text-right font-extrabold text-slate-700">Tickets Issued</th>
-                        <th className="px-4 py-3 text-right font-extrabold text-slate-700">Amount (₹)</th>
+                        <th className="px-4 py-3 text-right font-extrabold text-indigo-700 bg-indigo-50/50">1st Year (26)</th>
+                        <th className="px-4 py-3 text-right font-extrabold text-purple-700 bg-purple-50/50">2nd Year (25)</th>
+                        <th className="px-4 py-3 text-right font-extrabold text-slate-900 bg-slate-100/50">Total Tickets</th>
+                        <th className="px-4 py-3 text-right font-extrabold text-emerald-700">Institution Share (₹)</th>
+                        {dailyChannel === "ONLINE" && (
+                          <th className="px-4 py-3 text-right font-extrabold text-amber-700 bg-amber-50/50">Rudvay Fee (₹3.79)</th>
+                        )}
+                        {dailyChannel === "ONLINE" && (
+                          <th className="px-4 py-3 text-right font-extrabold text-slate-700">Gross Gateway (₹)</th>
+                        )}
                         <th className="px-4 py-3 text-right font-extrabold text-slate-500">Cumulative Tickets</th>
-                        <th className="px-4 py-3 text-right font-extrabold text-slate-500">Cumulative Amount (₹)</th>
+                        <th className="px-4 py-3 text-right font-extrabold text-slate-500">Cumulative Institution (₹)</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -3149,7 +3179,7 @@ function AdminDashboardContent() {
                         if (!rows || rows.length === 0) {
                           return (
                             <tr>
-                              <td colSpan={5} className="px-4 py-8 text-center text-slate-400">
+                              <td colSpan={dailyChannel === "ONLINE" ? 9 : 7} className="px-4 py-8 text-center text-slate-400">
                                 No {dailyChannel.toLowerCase()} transactions recorded yet.
                               </td>
                             </tr>
@@ -3158,8 +3188,30 @@ function AdminDashboardContent() {
                         return rows.map((row, idx) => (
                           <tr key={idx} className="hover:bg-slate-50 transition">
                             <td className="px-4 py-3 font-mono font-bold text-slate-900">{row.date}</td>
-                            <td className="px-4 py-3 text-right font-bold">{row.tickets_issued}</td>
+                            <td className="px-4 py-3 text-right font-bold text-indigo-700 bg-indigo-50/20">
+                              <span className="inline-flex items-center justify-end px-2 py-0.5 rounded-md bg-indigo-50/80 border border-indigo-200/60 font-mono text-[11px]">
+                                {row.first_year_tickets ?? 0}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-right font-bold text-purple-700 bg-purple-50/20">
+                              <span className="inline-flex items-center justify-end px-2 py-0.5 rounded-md bg-purple-50/80 border border-purple-200/60 font-mono text-[11px]">
+                                {row.second_year_tickets ?? 0}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-right font-black text-slate-900 bg-slate-50/30">
+                              {row.tickets_issued}
+                            </td>
                             <td className="px-4 py-3 text-right font-bold text-emerald-700">₹{row.amount.toLocaleString()}</td>
+                            {dailyChannel === "ONLINE" && (
+                              <td className="px-4 py-3 text-right font-semibold text-amber-800 bg-amber-50/20">
+                                ₹{(row.convenience_fee ?? 0).toLocaleString()}
+                              </td>
+                            )}
+                            {dailyChannel === "ONLINE" && (
+                              <td className="px-4 py-3 text-right font-semibold text-slate-600">
+                                ₹{(row.gross_amount ?? row.amount).toLocaleString()}
+                              </td>
+                            )}
                             <td className="px-4 py-3 text-right text-slate-500">{row.cumulative_tickets}</td>
                             <td className="px-4 py-3 text-right text-slate-500">₹{row.cumulative_amount.toLocaleString()}</td>
                           </tr>
@@ -3171,12 +3223,32 @@ function AdminDashboardContent() {
                       <tfoot>
                         <tr className="bg-slate-900 text-white">
                           <td className="px-4 py-3 font-extrabold text-[11px] uppercase tracking-wider">TOTAL</td>
-                          <td className="px-4 py-3 text-right font-extrabold">
+                          <td className="px-4 py-3 text-right font-extrabold text-indigo-300">
+                            {dailyChannel === "ONLINE"
+                              ? (dailyRevenue.totals.total_online_first_year_tickets ?? 0)
+                              : (dailyRevenue.totals.total_cash_first_year_tickets ?? 0)}
+                          </td>
+                          <td className="px-4 py-3 text-right font-extrabold text-purple-300">
+                            {dailyChannel === "ONLINE"
+                              ? (dailyRevenue.totals.total_online_second_year_tickets ?? 0)
+                              : (dailyRevenue.totals.total_cash_second_year_tickets ?? 0)}
+                          </td>
+                          <td className="px-4 py-3 text-right font-black text-white">
                             {dailyChannel === "ONLINE" ? dailyRevenue.totals.total_online_tickets : dailyRevenue.totals.total_cash_tickets}
                           </td>
                           <td className="px-4 py-3 text-right font-extrabold text-emerald-400">
                             ₹{(dailyChannel === "ONLINE" ? dailyRevenue.totals.total_online_amount : dailyRevenue.totals.total_cash_amount).toLocaleString()}
                           </td>
+                          {dailyChannel === "ONLINE" && (
+                            <td className="px-4 py-3 text-right font-extrabold text-amber-300">
+                              ₹{(dailyRevenue.totals.total_online_convenience_fee ?? 0).toLocaleString()}
+                            </td>
+                          )}
+                          {dailyChannel === "ONLINE" && (
+                            <td className="px-4 py-3 text-right font-extrabold text-slate-300">
+                              ₹{(dailyRevenue.totals.total_online_gross_amount ?? dailyRevenue.totals.total_online_amount).toLocaleString()}
+                            </td>
+                          )}
                           <td className="px-4 py-3 text-right" colSpan={2}></td>
                         </tr>
                       </tfoot>
