@@ -231,6 +231,11 @@ export interface DashboardMetrics {
   online_revenue: number;
   offline_revenue: number;
   total_tickets: number;
+  first_year_tickets?: number;
+  second_year_tickets?: number;
+  online_paid_count?: number;
+  total_convenience_fee?: number;
+  gross_online_revenue?: number;
   gate_validated_count: number;
   unvalidated_count: number;
   food_claimed_count: number;

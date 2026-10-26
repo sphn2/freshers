@@ -44,12 +44,29 @@ class ReportService:
                 params
             )
 
+            ticket_where = "WHERE t.event_id = %s" if event_id else ""
             ticket_stats = db.execute_one(
                 f"""SELECT
                 COUNT(*) as total_tickets,
-                SUM(CASE WHEN status = 'GATE_VALIDATED' THEN 1 ELSE 0 END) as gate_validated_count,
-                SUM(CASE WHEN status = 'ISSUED' THEN 1 ELSE 0 END) as unvalidated_count
-                   FROM tickets {where_clause}""",
+                COUNT(CASE WHEN SUBSTR(UPPER(TRIM(COALESCE(r.roll_number, ''))), 1, 2) = '26' THEN 1 END) as first_year_tickets,
+                COUNT(CASE WHEN SUBSTR(UPPER(TRIM(COALESCE(r.roll_number, ''))), 1, 2) = '25' THEN 1 END) as second_year_tickets,
+                SUM(CASE WHEN t.status = 'GATE_VALIDATED' THEN 1 ELSE 0 END) as gate_validated_count,
+                SUM(CASE WHEN t.status = 'ISSUED' THEN 1 ELSE 0 END) as unvalidated_count
+                   FROM tickets t
+                   LEFT JOIN registrations r ON t.registration_id = r.id
+                   {ticket_where}""",
+                params
+            )
+
+            pay_where = "WHERE p.status = 'PAID' AND r.event_id = %s" if event_id else "WHERE p.status = 'PAID'"
+            pay_stats = db.execute_one(
+                f"""SELECT
+                COUNT(p.id) as online_paid_count,
+                COALESCE(SUM(p.amount - r.ticket_price), 0) as total_convenience_fee,
+                COALESCE(SUM(p.amount), 0) as gross_online_revenue
+                   FROM payments p
+                   JOIN registrations r ON p.registration_id = r.id
+                   {pay_where}""",
                 params
             )
 
@@ -71,6 +88,11 @@ class ReportService:
             "online_revenue": float(reg_stats["online_revenue"] or 0) if reg_stats else 0.0,
             "offline_revenue": float(reg_stats["offline_revenue"] or 0) if reg_stats else 0.0,
             "total_tickets": ticket_stats["total_tickets"] if ticket_stats else 0,
+            "first_year_tickets": ticket_stats["first_year_tickets"] if ticket_stats else 0,
+            "second_year_tickets": ticket_stats["second_year_tickets"] if ticket_stats else 0,
+            "online_paid_count": pay_stats["online_paid_count"] if pay_stats else 0,
+            "total_convenience_fee": float(pay_stats["total_convenience_fee"] or 0) if pay_stats else 0.0,
+            "gross_online_revenue": float(pay_stats["gross_online_revenue"] or 0) if pay_stats else 0.0,
             "gate_validated_count": ticket_stats["gate_validated_count"] if ticket_stats else 0,
             "unvalidated_count": ticket_stats["unvalidated_count"] if ticket_stats else 0,
             "food_claimed_count": food_stats["food_claimed_count"] if food_stats else 0,

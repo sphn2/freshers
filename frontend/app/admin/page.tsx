@@ -425,14 +425,21 @@ function AdminDashboardContent() {
   }, []);
 
   useEffect(() => {
-    if (activeTab !== "overview" && activeTab !== "events" && activeTab !== "accounts") {
-      loadReport(activeTab);
+    const targetEid = selectedEventId || events[0]?.id;
+    if (activeTab === "daily-report") {
+      if (targetEid) void loadDailyReport(targetEid);
+    } else if (activeTab === "settlements") {
+      void loadSettlements(targetEid);
+    } else if (activeTab === "directory") {
+      // handled by directory effect
     } else if (activeTab === "events") {
       loadEvents();
     } else if (activeTab === "accounts" && isAdmin) {
       void loadStaffAccounts();
+    } else if (activeTab !== "overview") {
+      loadReport(activeTab);
     }
-  }, [activeTab, selectedEventId]);
+  }, [activeTab, selectedEventId, events]);
 
   const loadDashboard = async (requestedEventId = selectedEventId) => {
     setLoading(true);
@@ -444,6 +451,9 @@ function AdminDashboardContent() {
           api.getAuditLogs(20),
         ]);
         setEvents(eventData.events);
+        if (!selectedEventId && eventData.events.length > 0) {
+          setSelectedEventId(eventData.events[0].id);
+        }
         setMetrics(mData);
         setAuditLogs(logsData.audit_logs);
       } else {
@@ -469,13 +479,14 @@ function AdminDashboardContent() {
     }
   };
 
-  const loadDailyReport = async (eid = selectedEventId) => {
-    if (!eid) return;
+  const loadDailyReport = async (eid?: string) => {
+    const targetEid = eid || selectedEventId || events[0]?.id;
+    if (!targetEid) return;
     setDailyReportLoading(true);
     try {
       const [revenueData, collectorsData] = await Promise.all([
-        api.getDailyRevenueReport(eid),
-        api.getDailyCollectorsReport(eid, collectorDateFilter || undefined),
+        api.getDailyRevenueReport(targetEid),
+        api.getDailyCollectorsReport(targetEid, collectorDateFilter || undefined),
       ]);
       setDailyRevenue(revenueData);
       setDailyCollectors(collectorsData.collectors);
@@ -486,10 +497,11 @@ function AdminDashboardContent() {
     }
   };
 
-  const loadSettlements = async (eid = selectedEventId) => {
+  const loadSettlements = async (eid?: string) => {
+    const targetEid = eid || selectedEventId || events[0]?.id;
     setSettlementsLoading(true);
     try {
-      const data = await api.getSettlements(eid || undefined);
+      const data = await api.getSettlements(targetEid || undefined);
       setSettlements(data.settlements);
     } catch (err: unknown) {
       setStatusMsg(`❌ ${errorMessage(err, "Failed loading settlements.")}`);
@@ -921,6 +933,8 @@ function AdminDashboardContent() {
                   const eventId = event.target.value;
                   setSelectedEventId(eventId);
                   if (activeTab === "overview") void loadDashboard(eventId);
+                  else if (activeTab === "daily-report") void loadDailyReport(eventId);
+                  else if (activeTab === "settlements") void loadSettlements(eventId);
                 }}
                 className="field-control !min-h-10 !w-auto !border-white/25 !bg-white/10 !text-white"
               >
@@ -983,7 +997,7 @@ function AdminDashboardContent() {
             <MetricCard
               label="Total Revenue"
               value={`₹${(metrics?.total_revenue || 0).toFixed(0)}`}
-              sub={`Online ₹${metrics?.online_revenue || 0} | Cash ₹${metrics?.offline_revenue || 0}`}
+              sub={`Online ₹${metrics?.online_revenue || 0} | Cash ₹${metrics?.offline_revenue || 0}${metrics?.total_convenience_fee ? ` | Fee ₹${metrics.total_convenience_fee.toFixed(2)}` : ""}`}
               icon={<DollarSign className="w-4 h-4 text-pink-600" />}
               valueClass="text-pink-600"
             />
@@ -1002,7 +1016,7 @@ function AdminDashboardContent() {
           </div>
 
           {/* Secondary Stats */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="panel p-5">
               <div className="text-xs text-slate-500 font-bold uppercase">Pending Payments</div>
               <div className="text-2xl font-black text-yellow-600 mt-1">{metrics?.total_pending || 0}</div>
@@ -1014,6 +1028,18 @@ function AdminDashboardContent() {
             <div className="panel p-5">
               <div className="text-xs text-slate-500 font-bold uppercase">Tickets Issued</div>
               <div className="text-2xl font-black text-slate-900 mt-1">{metrics?.total_tickets || 0}</div>
+              <div className="text-[11px] font-semibold text-slate-500 mt-1">
+                1st Yr: <span className="font-bold text-indigo-700">{metrics?.first_year_tickets ?? 0}</span> &bull; 2nd Yr: <span className="font-bold text-purple-700">{metrics?.second_year_tickets ?? 0}</span>
+              </div>
+            </div>
+            <div className="panel p-5 bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200">
+              <div className="text-xs text-amber-800 font-bold uppercase">Rudvay Tech Fee (₹3.79)</div>
+              <div className="text-2xl font-black text-amber-900 mt-1">
+                ₹{(metrics?.total_convenience_fee || 0).toFixed(2)}
+              </div>
+              <div className="text-[11px] font-semibold text-amber-700 mt-1">
+                GST &amp; Convenience ({metrics?.online_paid_count || 0} online payments)
+              </div>
             </div>
           </div>
 
@@ -3035,18 +3061,26 @@ function AdminDashboardContent() {
       {/* TAB: Daily Report */}
       {activeTab === "daily-report" && (
         <div className="space-y-6">
-          <div className="border-b border-slate-200 pb-4">
-            <p className="eyebrow">Financial Operations</p>
-            <h2 className="editorial-title mt-2 text-3xl">Daily Revenue Report</h2>
-            <p className="mt-1 text-xs text-slate-500">
-              Per-day breakdown of tickets issued and revenue collected — online and cash separately.
-            </p>
+          <div className="border-b border-slate-200 pb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="eyebrow">Financial Operations</p>
+              <h2 className="editorial-title mt-2 text-3xl">Daily Revenue Report</h2>
+              <p className="mt-1 text-xs text-slate-500">
+                Per-day breakdown of tickets issued and revenue collected — online and cash separately.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
+              <span>Event:</span>
+              <span className="font-bold text-slate-900">
+                {events.find(e => e.id === (selectedEventId || events[0]?.id))?.title || "Active Event"}
+              </span>
+            </div>
           </div>
 
-          {!selectedEventId ? (
+          {(!selectedEventId && events.length === 0) ? (
             <div className="panel p-8 text-center text-sm text-slate-500">
               <BarChart3 className="w-8 h-8 mx-auto text-slate-300 mb-3" />
-              Please select an event from the dropdown above to view the daily report.
+              Please create an event to view the daily report.
             </div>
           ) : dailyReportLoading ? (
             <div className="flex items-center justify-center p-10 gap-2 text-slate-400">
