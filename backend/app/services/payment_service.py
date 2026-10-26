@@ -1,10 +1,11 @@
 import hashlib
 import hmac
 import json
+import threading
 import uuid
 from datetime import datetime, timezone
 
-from flask import current_app
+from flask import current_app, has_app_context
 
 from app.config import config
 from app.db import db
@@ -272,6 +273,14 @@ class PaymentService:
                     verification["signature"],
                 )
         elif event_type == "payment.failed" and payment:
+            # 1. If payment is already settled as PAID, ignore failure of any previous/concurrent attempt
+            if payment.get("status") == "PAID":
+                return {"status": "SUCCESS", "event": "ALREADY_PAID"}
+
+            # 2. If payment is already marked FAILED, avoid re-processing or re-emailing (Idempotency)
+            if payment.get("status") == "FAILED":
+                return {"status": "SUCCESS", "event": "ALREADY_FAILED"}
+
             db.execute_write(
                 "UPDATE payments SET status = 'FAILED', updated_at = %s WHERE id = %s AND status = 'CREATED'",
                 (datetime.now(timezone.utc).isoformat(), payment["id"]),
@@ -279,26 +288,68 @@ class PaymentService:
             audit_service.log(
                 "PAYMENT_FAILED", "payment", payment["id"], details={"order_id": order_id}
             )
+
             registration = db.execute_one(
-                """SELECT r.id, r.full_name, r.email, e.title AS event_title FROM registrations r
+                """SELECT r.id, r.status, r.full_name, r.email, e.title AS event_title FROM registrations r
                    JOIN events e ON e.id = r.event_id WHERE r.id = %s""",
                 (payment["registration_id"],),
             )
-            if registration:
-                token, token_hash = create_access_token()
-                db.execute_write(
-                    "UPDATE registrations SET payment_access_token_hash = %s, updated_at = %s WHERE id = %s AND status = 'PENDING_PAYMENT'",
-                    (token_hash, datetime.now(timezone.utc).isoformat(), registration["id"]),
-                )
-                registration["payment_url"] = (
-                    f"{config.APP_URL.rstrip('/')}/checkout/{registration['id']}#access_token={token}"
-                )
-                email_service.send_email(
-                    registration["email"],
-                    f"Payment needs attention — {registration['event_title']}",
-                    "emails/payment_failed.html",
-                    registration,
-                )
+            if not registration:
+                return {"status": "SUCCESS", "event": event_type}
+
+            # 3. If registration is already PAID, has another paid payment, or has a valid ticket issued, DO NOT send a payment failure email!
+            if registration.get("status") in ("PAID", "OFFLINE_PAID"):
+                return {"status": "SUCCESS", "event": "ALREADY_PAID"}
+
+            any_paid = db.execute_one(
+                "SELECT id FROM payments WHERE registration_id = %s AND status = 'PAID' LIMIT 1",
+                (registration["id"],),
+            )
+            if any_paid:
+                return {"status": "SUCCESS", "event": "ALREADY_PAID"}
+
+            ticket = db.execute_one(
+                "SELECT id FROM tickets WHERE registration_id = %s LIMIT 1",
+                (registration["id"],),
+            )
+            if ticket:
+                return {"status": "SUCCESS", "event": "TICKET_ALREADY_ISSUED"}
+
+            # 4. Check if an email was already sent for this registration to prevent spam loops on retries
+            already_sent = db.execute_one(
+                """SELECT id FROM email_logs
+                   WHERE recipient = %s
+                     AND template_name = 'emails/payment_failed.html'
+                     AND status IN ('SENT', 'MOCKED', 'PENDING')
+                   LIMIT 1""",
+                (registration["email"],),
+            )
+            if already_sent:
+                return {"status": "SUCCESS", "event": "ALREADY_NOTIFIED"}
+
+            token, token_hash = create_access_token()
+            db.execute_write(
+                "UPDATE registrations SET payment_access_token_hash = %s, updated_at = %s WHERE id = %s AND status = 'PENDING_PAYMENT'",
+                (token_hash, datetime.now(timezone.utc).isoformat(), registration["id"]),
+            )
+            registration["payment_url"] = (
+                f"{config.APP_URL.rstrip('/')}/checkout/{registration['id']}#access_token={token}"
+            )
+
+            email_kwargs = {
+                "recipient": registration["email"],
+                "subject": f"Payment needs attention — {registration['event_title']}",
+                "template_name": "emails/payment_failed.html",
+                "context": registration,
+                "metadata": {"registration_id": registration["id"]},
+            }
+
+            # Send email asynchronously so webhook endpoint returns immediately (<=100ms) to prevent gateway timeout and retries
+            if has_app_context() and current_app.config.get("TESTING"):
+                email_service.send_email(**email_kwargs)
+            else:
+                threading.Thread(target=email_service.send_email, kwargs=email_kwargs, daemon=True).start()
+
         return {"status": "SUCCESS", "event": event_type}
 
     @staticmethod
@@ -344,6 +395,13 @@ class PaymentService:
 
         if payment["status"] == "PAID":
             return {"status": "SUCCESS", "event": event_type or "ALREADY_PAID"}
+
+        if "FAILED" in event_type.upper() or "DROP" in event_type.upper():
+            db.execute_write(
+                "UPDATE payments SET status = 'FAILED', updated_at = %s WHERE id = %s AND status = 'CREATED'",
+                (datetime.now(timezone.utc).isoformat(), payment["id"]),
+            )
+            return {"status": "SUCCESS", "event": event_type}
 
         # Authoritatively verify with Cashfree gateway
         gw = gateway_factory.get_gateway("CASHFREE")

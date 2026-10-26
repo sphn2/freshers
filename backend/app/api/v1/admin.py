@@ -406,33 +406,45 @@ def resend_any_mail(registration_id):
                 return jsonify({"error": "No ticket has been issued for this registration yet."}), 400
 
         if mail_type in ("PAYMENT", "PAYMENT_LINK", "ALL"):
-            from app.utils.payment_access import create_access_token
-            payment_token, token_hash = create_access_token()
-            db.execute_write(
-                "UPDATE registrations SET payment_access_token_hash = %s WHERE id = %s",
-                (token_hash, registration_id)
-            )
-            checkout_url = f"{config.APP_URL.rstrip('/')}/checkout/{registration_id}#access_token={payment_token}"
-            email_service.send_email(
-                recipient=reg["email"],
-                subject=f"Registration & Payment Details — {reg['event_title']}",
-                template_name="emails/registration_confirmed.html",
-                context={
-                    "student_name": reg["full_name"],
-                    "event_title": reg["event_title"],
-                    "ticket_price": reg["ticket_price"],
-                    "is_free": float(reg["ticket_price"]) == 0,
-                    "ticket_code": None,
-                    "roll_number": reg["roll_number"],
-                    "department": reg["department"],
-                    "venue": reg["venue"],
-                    "event_time": reg["start_time"],
-                    "checkout_url": checkout_url,
-                    "existing_pending": reg["status"] == "PENDING_PAYMENT",
-                },
-                metadata={"registration_id": registration_id},
-            )
-            sent_messages.append("Payment/Registration Email")
+            if reg["status"] in ("PAID", "OFFLINE_PAID"):
+                if mail_type in ("PAYMENT", "PAYMENT_LINK"):
+                    return jsonify({"error": "This registration is already paid and ticket is issued. Use 'Resend Ticket' instead."}), 400
+                # If mail_type == "ALL", skip sending payment link for already-paid students
+            else:
+                from app.utils.payment_access import create_access_token
+                payment_token, token_hash = create_access_token()
+                db.execute_write(
+                    "UPDATE registrations SET payment_access_token_hash = %s WHERE id = %s",
+                    (token_hash, registration_id)
+                )
+                checkout_url = f"{config.APP_URL.rstrip('/')}/checkout/{registration_id}#access_token={payment_token}"
+                email_service.send_email(
+                    recipient=reg["email"],
+                    subject=f"Registration & Payment Details — {reg['event_title']}",
+                    template_name="emails/registration_confirmed.html",
+                    context={
+                        "student_name": reg["full_name"],
+                        "event_title": reg["event_title"],
+                        "ticket_price": reg["ticket_price"],
+                        "is_free": float(reg["ticket_price"]) == 0,
+                        "ticket_code": None,
+                        "roll_number": reg["roll_number"],
+                        "department": reg["department"],
+                        "venue": reg["venue"],
+                        "event_time": reg["start_time"],
+                        "checkout_url": checkout_url,
+                        "existing_pending": reg["status"] == "PENDING_PAYMENT",
+                    },
+                    metadata={"registration_id": registration_id},
+                )
+                audit_service.log(
+                    "RESEND_PAYMENT_EMAIL",
+                    "registration",
+                    registration_id,
+                    g.current_user["id"],
+                    {"recipient": reg["email"]},
+                )
+                sent_messages.append("Payment/Registration Email")
 
         if mail_type in ("GATE", "ALL"):
             ticket = db.execute_one("SELECT * FROM tickets WHERE registration_id = %s", (registration_id,))
