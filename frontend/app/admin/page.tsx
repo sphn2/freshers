@@ -997,7 +997,7 @@ function AdminDashboardContent() {
             <MetricCard
               label="Total Revenue"
               value={`₹${(metrics?.total_revenue || 0).toFixed(0)}`}
-              sub={`Online ₹${metrics?.online_revenue || 0} | Cash ₹${metrics?.offline_revenue || 0}${metrics?.total_convenience_fee ? ` | Fee ₹${metrics.total_convenience_fee.toFixed(2)}` : ""}`}
+              sub={`Online ₹${metrics?.online_revenue || 0} | Cash ₹${metrics?.offline_revenue || 0}${isSuperAdmin && metrics?.total_convenience_fee ? ` | Fee ₹${metrics.total_convenience_fee.toFixed(2)}` : ""}`}
               icon={<DollarSign className="w-4 h-4 text-pink-600" />}
               valueClass="text-pink-600"
             />
@@ -1016,7 +1016,7 @@ function AdminDashboardContent() {
           </div>
 
           {/* Secondary Stats */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className={`grid gap-4 ${isSuperAdmin ? "grid-cols-2 lg:grid-cols-4" : "grid-cols-3"}`}>
             <div className="panel p-5">
               <div className="text-xs text-slate-500 font-bold uppercase">Pending Payments</div>
               <div className="text-2xl font-black text-yellow-600 mt-1">{metrics?.total_pending || 0}</div>
@@ -1032,15 +1032,17 @@ function AdminDashboardContent() {
                 1st Yr: <span className="font-bold text-indigo-700">{metrics?.first_year_tickets ?? 0}</span> &bull; 2nd Yr: <span className="font-bold text-purple-700">{metrics?.second_year_tickets ?? 0}</span>
               </div>
             </div>
-            <div className="panel p-5 bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200">
-              <div className="text-xs text-amber-800 font-bold uppercase">Rudvay Tech Fee (₹3.79)</div>
-              <div className="text-2xl font-black text-amber-900 mt-1">
-                ₹{(metrics?.total_convenience_fee || 0).toFixed(2)}
+            {isSuperAdmin && (
+              <div className="panel p-5 bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200">
+                <div className="text-xs text-amber-800 font-bold uppercase">Rudvay Tech Fee (₹3.79)</div>
+                <div className="text-2xl font-black text-amber-900 mt-1">
+                  ₹{(metrics?.total_convenience_fee || 0).toFixed(2)}
+                </div>
+                <div className="text-[11px] font-semibold text-amber-700 mt-1">
+                  GST &amp; Convenience ({metrics?.online_paid_count || 0} online payments)
+                </div>
               </div>
-              <div className="text-[11px] font-semibold text-amber-700 mt-1">
-                GST &amp; Convenience ({metrics?.online_paid_count || 0} online payments)
-              </div>
-            </div>
+            )}
           </div>
 
           {/* Announcement & Emergency Banners Controller (ADMIN & SUPER ADMIN) */}
@@ -3121,7 +3123,7 @@ function AdminDashboardContent() {
 
               {/* Grand total summary cards */}
               {dailyRevenue && (
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className={`grid gap-4 ${isSuperAdmin ? "grid-cols-2 lg:grid-cols-4" : "grid-cols-1 md:grid-cols-3"}`}>
                   <div className="panel p-4 bg-gradient-to-br from-emerald-50 to-green-50 border-emerald-200">
                     <div className="text-[10px] font-extrabold uppercase text-emerald-700">Online Tickets Issued</div>
                     <div className="text-2xl font-black text-emerald-800 mt-1">{dailyRevenue.totals.total_online_tickets}</div>
@@ -3130,10 +3132,12 @@ function AdminDashboardContent() {
                     </div>
                   </div>
                   <div className="panel p-4 bg-gradient-to-br from-emerald-50 to-teal-50 border-emerald-200">
-                    <div className="text-[10px] font-extrabold uppercase text-emerald-700">Institution Online Revenue</div>
+                    <div className="text-[10px] font-extrabold uppercase text-emerald-700">
+                      {isSuperAdmin ? "Institution Online Revenue" : "Online Revenue"}
+                    </div>
                     <div className="text-2xl font-black text-emerald-800 mt-1">₹{dailyRevenue.totals.total_online_amount.toLocaleString()}</div>
                     <div className="text-[11px] font-semibold text-emerald-600 mt-1">
-                      ₹500 / ₹600 Base Ticket Share
+                      {isSuperAdmin ? "₹500 / ₹600 Base Ticket Share" : "₹500 / ₹600 Ticket Collection"}
                     </div>
                   </div>
                   <div className="panel p-4 bg-gradient-to-br from-pink-50 to-rose-50 border-pink-200">
@@ -3143,13 +3147,15 @@ function AdminDashboardContent() {
                       {dailyRevenue.totals.total_cash_tickets} tickets (1st: {dailyRevenue.totals.total_cash_first_year_tickets ?? 0}, 2nd: {dailyRevenue.totals.total_cash_second_year_tickets ?? 0})
                     </div>
                   </div>
-                  <div className="panel p-4 bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200">
-                    <div className="text-[10px] font-extrabold uppercase text-amber-700">Rudvay Tech &bull; GST &amp; Convenience</div>
-                    <div className="text-2xl font-black text-amber-900 mt-1">₹{(dailyRevenue.totals.total_convenience_fee ?? 0).toLocaleString()}</div>
-                    <div className="text-[11px] font-semibold text-amber-700 mt-1">
-                      ₹3.79 per transaction ({dailyRevenue.totals.total_online_tickets} online payments)
+                  {isSuperAdmin && (
+                    <div className="panel p-4 bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200">
+                      <div className="text-[10px] font-extrabold uppercase text-amber-700">Rudvay Tech &bull; GST &amp; Convenience</div>
+                      <div className="text-2xl font-black text-amber-900 mt-1">₹{(dailyRevenue.totals.total_convenience_fee ?? 0).toLocaleString()}</div>
+                      <div className="text-[11px] font-semibold text-amber-700 mt-1">
+                        ₹3.79 per transaction ({dailyRevenue.totals.total_online_tickets} online payments)
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               )}
 
@@ -3168,11 +3174,15 @@ function AdminDashboardContent() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-[10px] font-extrabold uppercase text-violet-700">Institution Total (Excluding Fee)</div>
-                    <div className="text-3xl font-black text-violet-900 mt-0.5">₹{dailyRevenue.totals.total_amount.toLocaleString()}</div>
-                    <div className="text-[11px] font-semibold text-slate-500 mt-0.5">
-                      Gross Collected: ₹{(dailyRevenue.totals.total_gross_amount ?? dailyRevenue.totals.total_amount).toLocaleString()} &bull; Rudvay Fee: ₹{(dailyRevenue.totals.total_convenience_fee ?? 0).toLocaleString()}
+                    <div className="text-[10px] font-extrabold uppercase text-violet-700">
+                      {isSuperAdmin ? "Institution Total (Excluding Fee)" : "Total Revenue"}
                     </div>
+                    <div className="text-3xl font-black text-violet-900 mt-0.5">₹{dailyRevenue.totals.total_amount.toLocaleString()}</div>
+                    {isSuperAdmin && (
+                      <div className="text-[11px] font-semibold text-slate-500 mt-0.5">
+                        Gross Collected: ₹{(dailyRevenue.totals.total_gross_amount ?? dailyRevenue.totals.total_amount).toLocaleString()} &bull; Rudvay Fee: ₹{(dailyRevenue.totals.total_convenience_fee ?? 0).toLocaleString()}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -3196,15 +3206,19 @@ function AdminDashboardContent() {
                         <th className="px-4 py-3 text-right font-extrabold text-indigo-700 bg-indigo-50/50">1st Year (26)</th>
                         <th className="px-4 py-3 text-right font-extrabold text-purple-700 bg-purple-50/50">2nd Year (25)</th>
                         <th className="px-4 py-3 text-right font-extrabold text-slate-900 bg-slate-100/50">Total Tickets</th>
-                        <th className="px-4 py-3 text-right font-extrabold text-emerald-700">Institution Share (₹)</th>
-                        {dailyChannel === "ONLINE" && (
+                        <th className="px-4 py-3 text-right font-extrabold text-emerald-700">
+                          {isSuperAdmin ? "Institution Share (₹)" : "Amount (₹)"}
+                        </th>
+                        {isSuperAdmin && dailyChannel === "ONLINE" && (
                           <th className="px-4 py-3 text-right font-extrabold text-amber-700 bg-amber-50/50">Rudvay Fee (₹3.79)</th>
                         )}
-                        {dailyChannel === "ONLINE" && (
+                        {isSuperAdmin && dailyChannel === "ONLINE" && (
                           <th className="px-4 py-3 text-right font-extrabold text-slate-700">Gross Gateway (₹)</th>
                         )}
                         <th className="px-4 py-3 text-right font-extrabold text-slate-500">Cumulative Tickets</th>
-                        <th className="px-4 py-3 text-right font-extrabold text-slate-500">Cumulative Institution (₹)</th>
+                        <th className="px-4 py-3 text-right font-extrabold text-slate-500">
+                          {isSuperAdmin ? "Cumulative Institution (₹)" : "Cumulative Amount (₹)"}
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -3213,7 +3227,7 @@ function AdminDashboardContent() {
                         if (!rows || rows.length === 0) {
                           return (
                             <tr>
-                              <td colSpan={dailyChannel === "ONLINE" ? 9 : 7} className="px-4 py-8 text-center text-slate-400">
+                              <td colSpan={(dailyChannel === "ONLINE" && isSuperAdmin) ? 9 : 7} className="px-4 py-8 text-center text-slate-400">
                                 No {dailyChannel.toLowerCase()} transactions recorded yet.
                               </td>
                             </tr>
@@ -3236,12 +3250,12 @@ function AdminDashboardContent() {
                               {row.tickets_issued}
                             </td>
                             <td className="px-4 py-3 text-right font-bold text-emerald-700">₹{row.amount.toLocaleString()}</td>
-                            {dailyChannel === "ONLINE" && (
+                            {isSuperAdmin && dailyChannel === "ONLINE" && (
                               <td className="px-4 py-3 text-right font-semibold text-amber-800 bg-amber-50/20">
                                 ₹{(row.convenience_fee ?? 0).toLocaleString()}
                               </td>
                             )}
-                            {dailyChannel === "ONLINE" && (
+                            {isSuperAdmin && dailyChannel === "ONLINE" && (
                               <td className="px-4 py-3 text-right font-semibold text-slate-600">
                                 ₹{(row.gross_amount ?? row.amount).toLocaleString()}
                               </td>
@@ -3273,12 +3287,12 @@ function AdminDashboardContent() {
                           <td className="px-4 py-3 text-right font-extrabold text-emerald-400">
                             ₹{(dailyChannel === "ONLINE" ? dailyRevenue.totals.total_online_amount : dailyRevenue.totals.total_cash_amount).toLocaleString()}
                           </td>
-                          {dailyChannel === "ONLINE" && (
+                          {isSuperAdmin && dailyChannel === "ONLINE" && (
                             <td className="px-4 py-3 text-right font-extrabold text-amber-300">
                               ₹{(dailyRevenue.totals.total_online_convenience_fee ?? 0).toLocaleString()}
                             </td>
                           )}
-                          {dailyChannel === "ONLINE" && (
+                          {isSuperAdmin && dailyChannel === "ONLINE" && (
                             <td className="px-4 py-3 text-right font-extrabold text-slate-300">
                               ₹{(dailyRevenue.totals.total_online_gross_amount ?? dailyRevenue.totals.total_online_amount).toLocaleString()}
                             </td>

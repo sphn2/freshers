@@ -32,6 +32,10 @@ def is_event_manager_only() -> bool:
     """True ONLY if user is strictly an EVENT_MANAGER and does NOT have ADMIN or SUPER_ADMIN roles."""
     return "EVENT_MANAGER" in g.user_roles and "ADMIN" not in g.user_roles and "SUPER_ADMIN" not in g.user_roles
 
+def is_super_admin() -> bool:
+    """True if user has SUPER_ADMIN role."""
+    return "SUPER_ADMIN" in getattr(g, "user_roles", [])
+
 def enforce_event_access(event_id: str):
     """If user is strictly EVENT_MANAGER, ensures the event_id is within their assigned scope."""
     if "ADMIN" in g.user_roles or "SUPER_ADMIN" in g.user_roles:
@@ -249,6 +253,10 @@ def get_dashboard_metrics():
         if event_id and not enforce_event_access(event_id):
             return jsonify({"error": "Forbidden. Event not assigned to you."}), 403
         metrics = report_service.get_admin_dashboard_metrics(event_id=event_id)
+        if not is_super_admin():
+            metrics.pop("total_convenience_fee", None)
+            metrics.pop("gross_online_revenue", None)
+            metrics.pop("online_paid_count", None)
         return jsonify(metrics), 200
     except Exception:
         return internal_error("fetching dashboard metrics")
@@ -824,6 +832,24 @@ def report_daily_revenue():
             date_from=date_from,
             date_to=date_to,
         )
+        if not is_super_admin():
+            for row in data.get("online", []):
+                row.pop("convenience_fee", None)
+                row.pop("cumulative_convenience_fee", None)
+                row.pop("gross_amount", None)
+                row.pop("cumulative_gross_amount", None)
+            for row in data.get("cash", []):
+                row.pop("convenience_fee", None)
+                row.pop("cumulative_convenience_fee", None)
+                row.pop("gross_amount", None)
+                row.pop("cumulative_gross_amount", None)
+            if "totals" in data:
+                data["totals"].pop("total_online_convenience_fee", None)
+                data["totals"].pop("total_online_gross_amount", None)
+                data["totals"].pop("total_cash_convenience_fee", None)
+                data["totals"].pop("total_cash_gross_amount", None)
+                data["totals"].pop("total_convenience_fee", None)
+                data["totals"].pop("total_gross_amount", None)
         return jsonify(data), 200
     except Exception:
         return internal_error("building the daily revenue report")
