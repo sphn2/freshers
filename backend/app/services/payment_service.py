@@ -13,6 +13,7 @@ from app.services.audit_service import audit_service
 from app.services.ticket_service import ticket_service
 from app.services.email_service import email_service
 from app.utils.payment_access import create_access_token
+from app.utils.timezone import now_ist_iso
 from app.services.system_settings_service import system_settings_service
 from app.services.gateways.factory import gateway_factory
 
@@ -109,14 +110,14 @@ class PaymentService:
                         "registration_id": registration_id,
                     }
                 else:
-                    now_iso = datetime.now(timezone.utc).isoformat()
+                    now_iso = now_ist_iso()
                     db.execute_write(
                         "UPDATE payments SET status = 'SUPERSEDED', updated_at = %s WHERE id = %s",
                         (now_iso, existing["id"]),
                     )
             elif existing.get("status") == "CREATED":
                 # Mark previous pending order superseded to generate a fresh order & session for Cashfree/PhonePe or when gateway changed
-                now_iso = datetime.now(timezone.utc).isoformat()
+                now_iso = now_ist_iso()
                 db.execute_write(
                     "UPDATE payments SET status = 'SUPERSEDED', updated_at = %s WHERE id = %s",
                     (now_iso, existing["id"]),
@@ -132,7 +133,7 @@ class PaymentService:
         )
 
         order_id = order_data["order_id"]
-        now = datetime.now(timezone.utc).isoformat()
+        now = now_ist_iso()
         db.execute_write(
             """INSERT INTO payments (
                 id, registration_id, razorpay_order_id, gateway_order_id, gateway,
@@ -283,7 +284,7 @@ class PaymentService:
 
             db.execute_write(
                 "UPDATE payments SET status = 'FAILED', updated_at = %s WHERE id = %s AND status = 'CREATED'",
-                (datetime.now(timezone.utc).isoformat(), payment["id"]),
+                (now_ist_iso(), payment["id"]),
             )
             audit_service.log(
                 "PAYMENT_FAILED", "payment", payment["id"], details={"order_id": order_id}
@@ -330,7 +331,7 @@ class PaymentService:
             token, token_hash = create_access_token()
             db.execute_write(
                 "UPDATE registrations SET payment_access_token_hash = %s, updated_at = %s WHERE id = %s AND status = 'PENDING_PAYMENT'",
-                (token_hash, datetime.now(timezone.utc).isoformat(), registration["id"]),
+                (token_hash, now_ist_iso(), registration["id"]),
             )
             registration["payment_url"] = (
                 f"{config.APP_URL.rstrip('/')}/checkout/{registration['id']}#access_token={token}"
@@ -399,7 +400,7 @@ class PaymentService:
         if "FAILED" in event_type.upper() or "DROP" in event_type.upper():
             db.execute_write(
                 "UPDATE payments SET status = 'FAILED', updated_at = %s WHERE id = %s AND status = 'CREATED'",
-                (datetime.now(timezone.utc).isoformat(), payment["id"]),
+                (now_ist_iso(), payment["id"]),
             )
             return {"status": "SUCCESS", "event": event_type}
 
@@ -419,7 +420,7 @@ class PaymentService:
 
     @staticmethod
     def _fulfill_payment(payment: dict, payment_id: str, signature: str):
-        now = datetime.now(timezone.utc).isoformat()
+        now = now_ist_iso()
         if payment["status"] == "PAID":
             existing_pid = payment.get("gateway_payment_id") or payment.get("razorpay_payment_id")
             if existing_pid and existing_pid != payment_id:

@@ -441,25 +441,29 @@ function AdminDashboardContent() {
     }
   }, [activeTab, selectedEventId, events]);
 
-  const loadDashboard = async (requestedEventId = selectedEventId) => {
+  const loadDashboard = async (requestedEventId?: string) => {
     setLoading(true);
     try {
       if (isAdmin) {
-        const [eventData, mData, logsData] = await Promise.all([
-          api.adminListEvents(),
-          api.getAdminMetrics(requestedEventId || undefined),
+        const eventData = await api.adminListEvents();
+        setEvents(eventData.events);
+
+        let targetId = requestedEventId !== undefined ? requestedEventId : selectedEventId;
+        if (!targetId && eventData.events.length > 0) {
+          targetId = eventData.events[0].id;
+          setSelectedEventId(targetId);
+        }
+
+        const [mData, logsData] = await Promise.all([
+          api.getAdminMetrics(targetId || undefined),
           api.getAuditLogs(20),
         ]);
-        setEvents(eventData.events);
-        if (!selectedEventId && eventData.events.length > 0) {
-          setSelectedEventId(eventData.events[0].id);
-        }
         setMetrics(mData);
         setAuditLogs(logsData.audit_logs);
       } else {
         const eventData = await api.adminListEvents();
         setEvents(eventData.events);
-        let eventId = requestedEventId || eventData.events[0]?.id || "";
+        let eventId = requestedEventId !== undefined ? requestedEventId : (selectedEventId || eventData.events[0]?.id || "");
         if (eventId && !selectedEventId) setSelectedEventId(eventId);
         if (!eventId) {
           setMetrics(null);
@@ -945,7 +949,7 @@ function AdminDashboardContent() {
             <button onClick={handleDownloadCSV} className="button-primary button-accent !min-h-10 !px-3 !text-[10px]">
               <FileSpreadsheet className="h-4 w-4" /><span>Export report</span>
             </button>
-            <button onClick={() => void loadDashboard()} className="button-primary !min-h-10 !border-white/25 !bg-white/10 !px-3 !text-[10px] hover:!bg-white/20">
+            <button onClick={() => void loadDashboard(selectedEventId)} className="button-primary !min-h-10 !border-white/25 !bg-white/10 !px-3 !text-[10px] hover:!bg-white/20">
               <RefreshCw className="h-4 w-4" /><span>Refresh</span>
             </button>
           </div>
@@ -1447,7 +1451,7 @@ function AdminDashboardContent() {
                     <div>
                       <span className="font-mono font-bold text-pink-600 uppercase text-[11px]">{log.action}</span>
                       <span className="text-slate-800 ml-2 font-semibold">{log.entity_type}</span>
-                      <div className="text-[10px] text-slate-400 mt-0.5">{new Date(log.created_at).toLocaleString()}</div>
+                      <div className="text-[10px] text-slate-400 mt-0.5">{new Date(log.created_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</div>
                     </div>
                     <div className="font-mono text-[10px] text-slate-500 max-w-[240px] truncate text-right">
                       {log.details ? (typeof log.details === "string" ? log.details.slice(0, 60) : JSON.stringify(log.details).slice(0, 60)) : ""}
@@ -1636,7 +1640,7 @@ function AdminDashboardContent() {
                     {ev.other_ticket_price != null && ` · Other: ₹${ev.other_ticket_price}`}
                   </div>
                   <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-slate-500">
-                    <span className="flex items-center gap-1"><CalendarClock className="h-3.5 w-3.5" />{new Date(ev.start_time).toLocaleString()}</span>
+                    <span className="flex items-center gap-1"><CalendarClock className="h-3.5 w-3.5" />{new Date(ev.start_time).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</span>
                     <span className={`font-extrabold uppercase tracking-[.08em] ${registrationAvailability(ev).open ? "text-emerald-700" : "text-rose-700"}`}>
                       {registrationAvailability(ev).label}
                     </span>
@@ -3792,7 +3796,7 @@ function AdminDashboardContent() {
                       <div>
                         <span className="text-[10px] font-extrabold uppercase text-slate-500">Receipt Generated At</span>
                         <div className="font-bold text-slate-900">
-                          {receiptSettlement.settled_at ? new Date(receiptSettlement.settled_at).toLocaleString() : "—"}
+                          {receiptSettlement.settled_at ? new Date(receiptSettlement.settled_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : "—"}
                         </div>
                       </div>
                       <div>
@@ -3907,7 +3911,9 @@ function formatReportDate(value: ReportRow[string], dateOnly = true): string {
   if (typeof value !== "string" && typeof value !== "number") return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
-  return dateOnly ? date.toLocaleDateString() : date.toLocaleString();
+  return dateOnly
+    ? date.toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" })
+    : date.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
 }
 
 function StatusBadge({ status }: { status: string }) {

@@ -9,6 +9,7 @@ from app.utils.security import generate_ticket_code, generate_signed_qr_token, v
 from app.services.email_service import email_service
 from app.services.audit_service import audit_service
 from app.utils.payment_access import create_access_token
+from app.utils.timezone import now_ist_iso
 
 
 def ticket_qr_png(token: str) -> bytes:
@@ -95,7 +96,7 @@ class TicketService:
 
         event = db.execute_one("SELECT * FROM events WHERE id = %s", (reg["event_id"],))
         ticket_id = str(uuid.uuid4())
-        now = datetime.now(timezone.utc).isoformat()
+        now = now_ist_iso()
 
         # Generate unique 6-digit code for this event
         max_attempts = 10
@@ -164,7 +165,7 @@ class TicketService:
         access_token, token_hash = create_access_token()
         db.execute_write(
             "UPDATE tickets SET public_access_token_hash = %s, updated_at = %s WHERE id = %s",
-            (token_hash, datetime.now(timezone.utc).isoformat(), ticket["id"]),
+            (token_hash, now_ist_iso(), ticket["id"]),
         )
         email_kwargs = {
             "recipient": ticket["email"],
@@ -226,7 +227,7 @@ class TicketService:
             raise RuntimeError("Failed generating new ticket code.")
 
         new_qr_token = generate_signed_qr_token(ticket_id, event_id)
-        now = datetime.now(timezone.utc).isoformat()
+        now = now_ist_iso()
 
         # Invalidate old ticket code / QR token and assign new ones
         db.execute_write(

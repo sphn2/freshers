@@ -397,3 +397,39 @@ def test_daily_report_and_payment_date_alignment(sample_event):
     assert target_payment["created_at"] == pay_timestamp
     assert target_payment["paid_at"] == pay_timestamp
 
+
+def test_daily_revenue_ist_timezone_boundary(sample_event):
+    """
+    Test that a payment made at 23:56 UTC (which is 05:26 AM next day in IST)
+    is grouped under the NEXT DAY (IST date) and not previous UTC day.
+    """
+    event_id = sample_event
+    utc_timestamp = "2026-10-26T23:56:25+00:00"
+    expected_ist_day = "2026-10-27"
+
+    reg_id = str(uuid.uuid4())
+    db.execute_write(
+        """INSERT INTO registrations (id, event_id, full_name, roll_number, email, phone, department, ticket_price, status, payment_method, created_at, updated_at)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+        (reg_id, event_id, "IST Test Student", "25N81A66N5", f"ist.{reg_id[:6]}@sphoorthy.ac.in", "9988771122", "CSE", 600.0, "PAID", "ONLINE", utc_timestamp, utc_timestamp),
+    )
+    pay_id = str(uuid.uuid4())
+    db.execute_write(
+        """INSERT INTO payments (id, registration_id, amount, status, payment_method, razorpay_order_id, created_at, updated_at)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+        (pay_id, reg_id, 603.79, "PAID", "RAZORPAY", f"order_{str(uuid.uuid4())[:8]}", utc_timestamp, utc_timestamp),
+    )
+    t_id = str(uuid.uuid4())
+    db.execute_write(
+        """INSERT INTO tickets (id, event_id, registration_id, ticket_code, qr_token, status, created_at, updated_at)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+        (t_id, event_id, reg_id, "IST001", str(uuid.uuid4()), "ISSUED", utc_timestamp, utc_timestamp),
+    )
+
+    report = report_service.get_daily_revenue_report(event_id=event_id)
+    oct27_rows = [r for r in report["online"] if r["date"] == expected_ist_day]
+    assert len(oct27_rows) == 1
+    assert oct27_rows[0]["second_year_tickets"] == 1
+    assert oct27_rows[0]["amount"] == 600.0
+
+

@@ -7,6 +7,7 @@ from app.services.ticket_service import ticket_service
 from app.services.audit_service import audit_service
 from app.services.registration_rules import ensure_event_capacity_available, ensure_registration_window_open
 from app.services.pricing_service import ticket_price_for_roll
+from app.utils.timezone import now_ist, now_ist_iso
 
 class OfflineService:
     @staticmethod
@@ -18,7 +19,7 @@ class OfflineService:
             raise ValueError("Invalid 6-digit authorization PIN.")
 
         reg_id = str(uuid.uuid4())
-        now = datetime.now(timezone.utc).isoformat()
+        now = now_ist_iso()
         receipt = req.receipt_number or f"CASH-{uuid.uuid4().hex[:6].upper()}"
         event_query = "SELECT * FROM events WHERE id = %s"
         if not db.is_sqlite:
@@ -29,7 +30,7 @@ class OfflineService:
             event = db.execute_one(event_query, (req.event_id,))
             if not event:
                 raise ValueError("Event not found.")
-            ensure_registration_window_open(event, datetime.now(timezone.utc))
+            ensure_registration_window_open(event, now_ist())
             if not event.get("allow_offline"):
                 raise ValueError("Offline cash registration is disabled for this event.")
             expected_amount = ticket_price_for_roll(event, req.roll_number)

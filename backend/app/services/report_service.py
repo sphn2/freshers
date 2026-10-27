@@ -3,25 +3,19 @@ import io
 import uuid
 from datetime import datetime, timezone, date, timedelta
 from app.db import db
+from app.utils.timezone import IST, now_ist_iso, to_ist_date_str, format_ist_display
 
 
 def _to_ist_date(iso_str: str) -> str:
-    """Convert an ISO UTC timestamp string to IST YYYY-MM-DD date string."""
-    if not iso_str:
-        return ""
-    try:
-        dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
-        # IST = UTC+5:30
-        ist = dt.utctimetuple()
-        # Simple offset conversion
-        from datetime import timezone as tz
-        import datetime as _dt
-        IST = _dt.timezone(_dt.timedelta(hours=5, minutes=30))
-        dt_ist = dt.astimezone(IST)
-        return dt_ist.strftime("%Y-%m-%d")
-    except Exception:
-        # fallback: use first 10 chars
-        return iso_str[:10]
+    """Convert an ISO timestamp string to IST YYYY-MM-DD date string."""
+    return to_ist_date_str(iso_str)
+
+
+def _sql_ist_day(expr: str) -> str:
+    """Return SQL expression to format timestamp column/expr as YYYY-MM-DD in IST (Asia/Kolkata)."""
+    if getattr(db, "is_sqlite", False):
+        return f"strftime('%Y-%m-%d', datetime({expr}, '+5 hours', '+30 minutes'))"
+    return f"to_char(({expr})::timestamptz AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD')"
 
 
 class ReportService:
@@ -213,15 +207,18 @@ class ReportService:
         writer = csv.writer(output)
         writer.writerow([
             "Registration ID", "Event Title", "Student Name", "Roll Number", "Email", "Phone",
-            "Department", "College", "Reg Status", "Payment Method", "Price (INR)", "Registered At",
-            "Ticket Code", "Gate Status", "Gate Validated At", "Food Status"
+            "Department", "College", "Reg Status", "Payment Method", "Price (INR)", "Registered At (IST)",
+            "Ticket Code", "Gate Status", "Gate Validated At (IST)", "Food Status"
         ])
 
         for r in rows:
             values = [
                 r["id"], r["event_title"], r["full_name"], r["roll_number"], r["email"], r["phone"],
-                r["department"], r["college"], r["status"], r["payment_method"], r["ticket_price"], r["created_at"],
-                r.get("ticket_code") or "", r.get("ticket_status") or "", r.get("gate_validated_at") or "", r.get("food_status") or ""
+                r["department"], r["college"], r["status"], r["payment_method"], r["ticket_price"],
+                format_ist_display(r["created_at"]),
+                r.get("ticket_code") or "", r.get("ticket_status") or "",
+                format_ist_display(r.get("gate_validated_at")),
+                r.get("food_status") or ""
             ]
             safe_values = []
             for value in values:
@@ -256,24 +253,27 @@ class ReportService:
         # --- ONLINE rows: from payments table (PAID or CAPTURED status) ---
         # Calculate daily rows by successful payment completion date (ticket issued / payment completion date)
         pay_date_expr = "COALESCE(t.created_at, p.updated_at, p.created_at)"
+        online_day_expr = _sql_ist_day(pay_date_expr)
+        cash_day_expr = _sql_ist_day("oc.created_at")
+
         online_where = "WHERE r.event_id::text = %s AND (p.status = 'PAID' OR p.status = 'CAPTURED')"
         online_params = [event_id]
         cash_where = "WHERE oc.event_id::text = %s"
         cash_params = [event_id]
 
         if date_from:
-            online_where += f" AND substr({pay_date_expr}::text, 1, 10) >= %s"
+            online_where += f" AND {online_day_expr} >= %s"
             online_params.append(date_from)
-            cash_where += " AND substr(oc.created_at::text, 1, 10) >= %s"
+            cash_where += f" AND {cash_day_expr} >= %s"
             cash_params.append(date_from)
         if date_to:
-            online_where += f" AND substr({pay_date_expr}::text, 1, 10) <= %s"
+            online_where += f" AND {online_day_expr} <= %s"
             online_params.append(date_to)
-            cash_where += " AND substr(oc.created_at::text, 1, 10) <= %s"
+            cash_where += f" AND {cash_day_expr} <= %s"
             cash_params.append(date_to)
 
         online_rows = db.execute_query(
-            f"""SELECT substr({pay_date_expr}::text, 1, 10) as day,
+            f"""SELECT {online_day_expr} as day,
                        COUNT(DISTINCT CASE WHEN SUBSTR(UPPER(TRIM(COALESCE(r.roll_number, ''))), 1, 2) = '26' THEN t.id END) as first_year_tickets,
                        COUNT(DISTINCT CASE WHEN SUBSTR(UPPER(TRIM(COALESCE(r.roll_number, ''))), 1, 2) = '25' THEN t.id END) as second_year_tickets,
                        COUNT(DISTINCT CASE WHEN SUBSTR(UPPER(TRIM(COALESCE(r.roll_number, ''))), 1, 2) NOT IN ('25', '26') THEN t.id END) as other_tickets,
@@ -285,14 +285,14 @@ class ReportService:
                 JOIN registrations r ON p.registration_id = r.id
                 LEFT JOIN tickets t ON r.id = t.registration_id
                 {online_where}
-                GROUP BY substr({pay_date_expr}::text, 1, 10)
+                GROUP BY {online_day_expr}
                 ORDER BY day ASC""",
             tuple(online_params)
         )
 
         # --- CASH rows: from offline_collections ---
         cash_rows = db.execute_query(
-            f"""SELECT substr(oc.created_at::text, 1, 10) as day,
+            f"""SELECT {cash_day_expr} as day,
                        COUNT(DISTINCT CASE WHEN SUBSTR(UPPER(TRIM(COALESCE(r.roll_number, ''))), 1, 2) = '26' THEN t.id END) as first_year_tickets,
                        COUNT(DISTINCT CASE WHEN SUBSTR(UPPER(TRIM(COALESCE(r.roll_number, ''))), 1, 2) = '25' THEN t.id END) as second_year_tickets,
                        COUNT(DISTINCT CASE WHEN SUBSTR(UPPER(TRIM(COALESCE(r.roll_number, ''))), 1, 2) NOT IN ('25', '26') THEN t.id END) as other_tickets,
@@ -304,7 +304,7 @@ class ReportService:
                 JOIN registrations r ON oc.registration_id = r.id
                 LEFT JOIN tickets t ON r.id = t.registration_id
                 {cash_where}
-                GROUP BY substr(oc.created_at::text, 1, 10)
+                GROUP BY {cash_day_expr}
                 ORDER BY day ASC""",
             tuple(cash_params)
         )
@@ -411,14 +411,15 @@ class ReportService:
         If target_date is provided, filters to that single day.
         Returns list of { collector_id, collector_name, collector_email, date, tickets_count, total_cash }
         """
+        cash_day_expr = _sql_ist_day("oc.created_at")
         where = "WHERE oc.event_id::text = %s"
         params = [event_id]
         if target_date:
-            where += " AND substr(oc.created_at::text, 1, 10) = %s"
+            where += f" AND {cash_day_expr} = %s"
             params.append(target_date)
 
         rows = db.execute_query(
-            f"""SELECT substr(oc.created_at::text, 1, 10) as day,
+            f"""SELECT {cash_day_expr} as day,
                        oc.collector_id,
                        COALESCE(MAX(p.full_name), 'Unknown') as collector_name,
                        COALESCE(MAX(p.email), '') as collector_email,
@@ -427,7 +428,7 @@ class ReportService:
                 FROM offline_collections oc
                 LEFT JOIN profiles p ON oc.collector_id::text = p.id::text
                 {where}
-                GROUP BY substr(oc.created_at::text, 1, 10), oc.collector_id
+                GROUP BY {cash_day_expr}, oc.collector_id
                 ORDER BY day ASC, total_cash DESC""",
             tuple(params)
         )
@@ -526,7 +527,7 @@ class ReportService:
             receipt_number = f"RCPT-{date_part}-{seq:03d}"
 
         sid = str(uuid.uuid4())
-        now = datetime.now(timezone.utc).isoformat()
+        now = now_ist_iso()
         total_amount = round(total_online_amount + total_cash_amount, 2)
 
         db.execute_write(
@@ -561,7 +562,7 @@ class ReportService:
         if existing["is_settled"]:
             raise ValueError("This settlement has already been marked as settled.")
 
-        now = datetime.now(timezone.utc).isoformat()
+        now = now_ist_iso()
         db.execute_write(
             """UPDATE daily_settlements
                SET is_settled = %s, settled_at = %s, settled_by = %s,
