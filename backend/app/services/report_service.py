@@ -128,19 +128,12 @@ class ReportService:
                 year_list = [str(y).strip() for y in year if str(y).strip()]
 
             prefixes = set()
-            include_other = False
             for y_item in year_list:
                 yl = y_item.lower()
                 if "1" in yl or "first" in yl or yl == "26":
                     prefixes.add("26")
                 elif "2" in yl or "second" in yl or yl == "25":
                     prefixes.add("25")
-                elif "3" in yl or "third" in yl or yl == "24":
-                    prefixes.add("24")
-                elif "4" in yl or "fourth" in yl or yl == "23":
-                    prefixes.add("23")
-                elif "other" in yl:
-                    include_other = True
                 elif len(y_item) == 2 and y_item.isdigit():
                     prefixes.add(y_item)
 
@@ -149,8 +142,6 @@ class ReportService:
                 p_placeholders = ", ".join(["%s"] * len(prefixes))
                 year_sub_conds.append(f"SUBSTR(UPPER(TRIM(COALESCE(r.roll_number, ''))), 1, 2) IN ({p_placeholders})")
                 params.extend(list(prefixes))
-            if include_other:
-                year_sub_conds.append("SUBSTR(UPPER(TRIM(COALESCE(r.roll_number, ''))), 1, 2) NOT IN ('26', '25', '24', '23')")
             if year_sub_conds:
                 conditions.append(f"({' OR '.join(year_sub_conds)})")
 
@@ -196,9 +187,7 @@ class ReportService:
                       CASE 
                           WHEN SUBSTR(UPPER(TRIM(COALESCE(r.roll_number, ''))), 1, 2) = '26' THEN '1st Year'
                           WHEN SUBSTR(UPPER(TRIM(COALESCE(r.roll_number, ''))), 1, 2) = '25' THEN '2nd Year'
-                          WHEN SUBSTR(UPPER(TRIM(COALESCE(r.roll_number, ''))), 1, 2) = '24' THEN '3rd Year'
-                          WHEN SUBSTR(UPPER(TRIM(COALESCE(r.roll_number, ''))), 1, 2) = '23' THEN '4th Year'
-                          ELSE 'Other'
+                          ELSE '—'
                       END as academic_year,
                       r.email, r.phone,
                       r.department, r.college, r.status, r.payment_method, r.ticket_price, r.created_at,

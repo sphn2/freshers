@@ -37,9 +37,6 @@ const ALL_REGISTRATION_DEPARTMENTS = ["CSE", "ECE", "CSE-CS", "CSE - AIML", "CSE
 const ALL_REGISTRATION_YEARS = [
   { key: "1st Year", label: "1st Year (26)", prefix: "26" },
   { key: "2nd Year", label: "2nd Year (25)", prefix: "25" },
-  { key: "3rd Year", label: "3rd Year (24)", prefix: "24" },
-  { key: "4th Year", label: "4th Year (23)", prefix: "23" },
-  { key: "Other", label: "Other", prefix: "" },
 ];
 const ALL_REGISTRATION_STATUSES = [
   { key: "PAID", label: "Paid Online" },
@@ -453,9 +450,7 @@ function AdminDashboardContent() {
               ...r,
               event_title: r.events?.title || "",
               academic_year: r.roll_number?.trim().startsWith("26") ? "1st Year" :
-                             r.roll_number?.trim().startsWith("25") ? "2nd Year" :
-                             r.roll_number?.trim().startsWith("24") ? "3rd Year" :
-                             r.roll_number?.trim().startsWith("23") ? "4th Year" : "Other"
+                             r.roll_number?.trim().startsWith("25") ? "2nd Year" : "—"
             }));
             setReportData(formatted);
             setStatusMsg(null);
@@ -2913,7 +2908,7 @@ function AdminDashboardContent() {
                             <td className="px-4 py-3 font-mono text-pink-600 font-bold">{row.roll_number}</td>
                             <td className="px-4 py-3">
                               <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200 whitespace-nowrap">
-                                {String(row.academic_year || (String(row.roll_number || "").startsWith("26") ? "1st Year" : String(row.roll_number || "").startsWith("25") ? "2nd Year" : String(row.roll_number || "").startsWith("24") ? "3rd Year" : String(row.roll_number || "").startsWith("23") ? "4th Year" : "Other"))}
+                                {String(row.academic_year || (String(row.roll_number || "").startsWith("26") ? "1st Year" : String(row.roll_number || "").startsWith("25") ? "2nd Year" : "—"))}
                               </span>
                             </td>
                             <td className="px-4 py-3">
