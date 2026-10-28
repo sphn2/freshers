@@ -257,10 +257,45 @@ export const api = {
       },
     ),
 
-  getRegistrationsReport: (eventId?: string) =>
-    apiFetch<{ registrations: ReportRow[] }>(
-      `/admin/reports/registrations${eventId ? `?event_id=${encodeURIComponent(eventId)}` : ""}`,
-    ),
+  getRegistrationsReport: (
+    eventId?: string,
+    options?: {
+      limit?: number;
+      search?: string;
+      years?: string[];
+      departments?: string[];
+      statuses?: string[];
+      gate_status?: string;
+      food_status?: string;
+    } | number
+  ) => {
+    const params = new URLSearchParams();
+    if (typeof options === "number") {
+      params.set("limit", String(options));
+    } else if (options) {
+      if (options.limit) params.set("limit", String(options.limit));
+      if (options.search) params.set("search", options.search.trim());
+      if (options.years && options.years.length > 0) {
+        params.set("years", options.years.join(","));
+      }
+      if (options.departments && options.departments.length > 0) {
+        params.set("departments", options.departments.join(","));
+      }
+      if (options.statuses && options.statuses.length > 0) {
+        params.set("statuses", options.statuses.join(","));
+      }
+      if (options.gate_status && options.gate_status !== "ALL") {
+        params.set("gate_status", options.gate_status);
+      }
+      if (options.food_status && options.food_status !== "ALL") {
+        params.set("food_status", options.food_status);
+      }
+    } else {
+      params.set("limit", "5000");
+    }
+    if (eventId) params.set("event_id", eventId);
+    return apiFetch<{ registrations: ReportRow[] }>(`/admin/reports/registrations?${params.toString()}`);
+  },
   updateRegistrationEmail: (registrationId: string, email: string) =>
     apiFetch<{ message: string; email: string }>(
       `/admin/registrations/${encodeURIComponent(registrationId)}/email`,
@@ -292,19 +327,32 @@ export const api = {
         body: JSON.stringify({ mail_type: mailType }),
       },
     ),
-  getPaymentsReport: (eventId?: string) =>
-    apiFetch<{ payments: ReportRow[] }>(
-      `/admin/reports/payments${eventId ? `?event_id=${encodeURIComponent(eventId)}` : ""}`,
-    ),
-  getEntriesReport: (eventId?: string) =>
-    apiFetch<{ entries: ReportRow[] }>(
-      `/admin/reports/entries${eventId ? `?event_id=${encodeURIComponent(eventId)}` : ""}`,
-    ),
-  getOfflineReport: (eventId?: string) =>
-    apiFetch<{ offline_collections: ReportRow[] }>(
-      `/admin/reports/offline${eventId ? `?event_id=${encodeURIComponent(eventId)}` : ""}`,
-    ),
-  downloadRegistrationsCsv: async (eventId?: string): Promise<Blob> => {
+  getPaymentsReport: (eventId?: string, limit: number = 2000) => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (eventId) params.set("event_id", eventId);
+    return apiFetch<{ payments: ReportRow[] }>(`/admin/reports/payments?${params.toString()}`);
+  },
+  getEntriesReport: (eventId?: string, limit: number = 2000) => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (eventId) params.set("event_id", eventId);
+    return apiFetch<{ entries: ReportRow[] }>(`/admin/reports/entries?${params.toString()}`);
+  },
+  getOfflineReport: (eventId?: string, limit: number = 2000) => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (eventId) params.set("event_id", eventId);
+    return apiFetch<{ offline_collections: ReportRow[] }>(`/admin/reports/offline?${params.toString()}`);
+  },
+  downloadRegistrationsCsv: async (
+    eventId?: string,
+    filters?: {
+      search?: string;
+      years?: string[];
+      departments?: string[];
+      statuses?: string[];
+      gate_status?: string;
+      food_status?: string;
+    }
+  ): Promise<Blob> => {
     const { data: sessionData } = supabase
       ? await supabase.auth.getSession()
       : { data: { session: null } };
@@ -312,7 +360,27 @@ export const api = {
     if (sessionData.session?.access_token) {
       headers.set("Authorization", `Bearer ${sessionData.session.access_token}`);
     }
-    const query = eventId ? `?event_id=${encodeURIComponent(eventId)}` : "";
+    const params = new URLSearchParams();
+    if (eventId) params.set("event_id", eventId);
+    if (filters) {
+      if (filters.search) params.set("search", filters.search.trim());
+      if (filters.years && filters.years.length > 0) {
+        params.set("years", filters.years.join(","));
+      }
+      if (filters.departments && filters.departments.length > 0) {
+        params.set("departments", filters.departments.join(","));
+      }
+      if (filters.statuses && filters.statuses.length > 0) {
+        params.set("statuses", filters.statuses.join(","));
+      }
+      if (filters.gate_status && filters.gate_status !== "ALL") {
+        params.set("gate_status", filters.gate_status);
+      }
+      if (filters.food_status && filters.food_status !== "ALL") {
+        params.set("food_status", filters.food_status);
+      }
+    }
+    const query = params.toString() ? `?${params.toString()}` : "";
     const response = await fetch(`${getApiBaseUrl()}/admin/reports/registrations/csv${query}`, {
       headers,
     });

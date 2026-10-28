@@ -94,35 +94,126 @@ class ReportService:
         }
 
     @staticmethod
-    def get_registrations_report(event_id: str = None, limit: int = 200):
+    def get_registrations_report(
+        event_id: str = None,
+        limit: int = 5000,
+        search: str = None,
+        year = None,
+        department = None,
+        status = None,
+        gate_status: str = None,
+        food_status: str = None
+    ):
+        conditions = []
+        params = []
         if event_id:
-            return db.execute_query(
-                """SELECT r.id, e.title as event_title, r.full_name, r.roll_number, r.email, r.phone,
-                          r.department, r.college, r.status, r.payment_method, r.ticket_price, r.created_at,
-                          t.ticket_code, t.status as ticket_status, t.gate_validated_at, fe.status as food_status
-                   FROM registrations r
-                   JOIN events e ON r.event_id = e.id
-                   LEFT JOIN tickets t ON r.id = t.registration_id
-                   LEFT JOIN food_entitlements fe ON t.id = fe.ticket_id
-                   WHERE r.event_id = %s
-                   ORDER BY r.created_at DESC LIMIT %s""",
-                (event_id, limit)
+            conditions.append("r.event_id = %s")
+            params.append(event_id)
+
+        if search and search.strip():
+            term = f"%{search.strip().lower()}%"
+            conditions.append(
+                """(LOWER(r.full_name) LIKE %s OR 
+                    LOWER(r.roll_number) LIKE %s OR 
+                    LOWER(r.email) LIKE %s OR 
+                    LOWER(r.phone) LIKE %s OR 
+                    LOWER(COALESCE(t.ticket_code, '')) LIKE %s)"""
             )
-        else:
-            return db.execute_query(
-                """SELECT r.id, e.title as event_title, r.full_name, r.roll_number, r.email, r.phone,
-                          r.department, r.college, r.status, r.payment_method, r.ticket_price, r.created_at,
-                          t.ticket_code, t.status as ticket_status, t.gate_validated_at, fe.status as food_status
-                   FROM registrations r
-                   JOIN events e ON r.event_id = e.id
-                   LEFT JOIN tickets t ON r.id = t.registration_id
-                   LEFT JOIN food_entitlements fe ON t.id = fe.ticket_id
-                   ORDER BY r.created_at DESC LIMIT %s""",
-                (limit,)
-            )
+            params.extend([term, term, term, term, term])
+
+        if year:
+            if isinstance(year, str):
+                year_list = [y.strip() for y in year.split(",") if y.strip()]
+            else:
+                year_list = [str(y).strip() for y in year if str(y).strip()]
+
+            prefixes = set()
+            include_other = False
+            for y_item in year_list:
+                yl = y_item.lower()
+                if "1" in yl or "first" in yl or yl == "26":
+                    prefixes.add("26")
+                elif "2" in yl or "second" in yl or yl == "25":
+                    prefixes.add("25")
+                elif "3" in yl or "third" in yl or yl == "24":
+                    prefixes.add("24")
+                elif "4" in yl or "fourth" in yl or yl == "23":
+                    prefixes.add("23")
+                elif "other" in yl:
+                    include_other = True
+                elif len(y_item) == 2 and y_item.isdigit():
+                    prefixes.add(y_item)
+
+            year_sub_conds = []
+            if prefixes:
+                p_placeholders = ", ".join(["%s"] * len(prefixes))
+                year_sub_conds.append(f"SUBSTR(UPPER(TRIM(COALESCE(r.roll_number, ''))), 1, 2) IN ({p_placeholders})")
+                params.extend(list(prefixes))
+            if include_other:
+                year_sub_conds.append("SUBSTR(UPPER(TRIM(COALESCE(r.roll_number, ''))), 1, 2) NOT IN ('26', '25', '24', '23')")
+            if year_sub_conds:
+                conditions.append(f"({' OR '.join(year_sub_conds)})")
+
+        if department:
+            if isinstance(department, str):
+                dept_list = [d.strip() for d in department.split(",") if d.strip()]
+            else:
+                dept_list = [str(d).strip() for d in department if str(d).strip()]
+            if dept_list:
+                d_placeholders = ", ".join(["%s"] * len(dept_list))
+                conditions.append(f"UPPER(TRIM(r.department)) IN ({d_placeholders})")
+                params.extend([d.upper() for d in dept_list])
+
+        if status:
+            if isinstance(status, str):
+                st_list = [s.strip().upper() for s in status.split(",") if s.strip()]
+            else:
+                st_list = [str(s).strip().upper() for s in status if str(s).strip()]
+            if st_list:
+                s_placeholders = ", ".join(["%s"] * len(st_list))
+                conditions.append(f"UPPER(TRIM(r.status)) IN ({s_placeholders})")
+                params.extend(st_list)
+
+        if gate_status:
+            gs = str(gate_status).strip().upper()
+            if gs in ("VALIDATED", "YES", "TRUE", "ENTERED"):
+                conditions.append("t.gate_validated_at IS NOT NULL")
+            elif gs in ("NOT_VALIDATED", "NO", "FALSE", "PENDING"):
+                conditions.append("(t.gate_validated_at IS NULL OR t.id IS NULL)")
+
+        if food_status:
+            fs = str(food_status).strip().upper()
+            if fs in ("CLAIMED", "YES", "TRUE"):
+                conditions.append("UPPER(COALESCE(fe.status, '')) = 'CLAIMED'")
+            elif fs in ("NOT_CLAIMED", "NO", "FALSE", "PENDING"):
+                conditions.append("(fe.status IS NULL OR UPPER(fe.status) != 'CLAIMED')")
+
+        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        params.append(limit)
+
+        return db.execute_query(
+            f"""SELECT r.id, e.title as event_title, r.full_name, r.roll_number,
+                      CASE 
+                          WHEN SUBSTR(UPPER(TRIM(COALESCE(r.roll_number, ''))), 1, 2) = '26' THEN '1st Year'
+                          WHEN SUBSTR(UPPER(TRIM(COALESCE(r.roll_number, ''))), 1, 2) = '25' THEN '2nd Year'
+                          WHEN SUBSTR(UPPER(TRIM(COALESCE(r.roll_number, ''))), 1, 2) = '24' THEN '3rd Year'
+                          WHEN SUBSTR(UPPER(TRIM(COALESCE(r.roll_number, ''))), 1, 2) = '23' THEN '4th Year'
+                          ELSE 'Other'
+                      END as academic_year,
+                      r.email, r.phone,
+                      r.department, r.college, r.status, r.payment_method, r.ticket_price, r.created_at,
+                      t.ticket_code, t.status as ticket_status, t.gate_validated_at, fe.status as food_status
+               FROM registrations r
+               JOIN events e ON r.event_id = e.id
+               LEFT JOIN tickets t ON r.id = t.registration_id
+               LEFT JOIN food_entitlements fe ON t.id = fe.ticket_id
+               {where_clause}
+               ORDER BY r.created_at DESC LIMIT %s""",
+            tuple(params)
+        )
 
     @staticmethod
-    def get_payments_report(event_id: str = None, limit: int = 200):
+    def get_payments_report(event_id: str = None, limit: int = 2000):
         pay_date_expr = "COALESCE(CASE WHEN p.status = 'PAID' THEN COALESCE(t.created_at, p.updated_at) ELSE p.created_at END, p.created_at)"
         where_clause = "WHERE r.event_id = %s" if event_id else ""
         params = (event_id, limit) if event_id else (limit,)
@@ -143,7 +234,7 @@ class ReportService:
         )
 
     @staticmethod
-    def get_gate_entries_report(event_id: str = None, limit: int = 200):
+    def get_gate_entries_report(event_id: str = None, limit: int = 2000):
         if event_id:
             return db.execute_query(
                 """SELECT t.id, t.ticket_code, t.status, t.gate_validated_at, t.gate_validated_by,
@@ -170,7 +261,7 @@ class ReportService:
             )
 
     @staticmethod
-    def get_offline_collections_report(event_id: str = None, limit: int = 200):
+    def get_offline_collections_report(event_id: str = None, limit: int = 2000):
         if event_id:
             return db.execute_query(
                 """SELECT oc.id, oc.amount, oc.payment_method, oc.receipt_number, oc.notes, oc.created_at,
@@ -200,21 +291,44 @@ class ReportService:
             )
 
     @staticmethod
-    def export_registrations_csv(event_id: str = None) -> str:
-        rows = ReportService.get_registrations_report(event_id=event_id, limit=5000)
+    def export_registrations_csv(
+        event_id: str = None,
+        search: str = None,
+        year = None,
+        department = None,
+        status = None,
+        gate_status: str = None,
+        food_status: str = None,
+        limit: int = 50000
+    ) -> str:
+        kwargs = {"event_id": event_id, "limit": limit}
+        if search:
+            kwargs["search"] = search
+        if year:
+            kwargs["year"] = year
+        if department:
+            kwargs["department"] = department
+        if status:
+            kwargs["status"] = status
+        if gate_status:
+            kwargs["gate_status"] = gate_status
+        if food_status:
+            kwargs["food_status"] = food_status
+
+        rows = ReportService.get_registrations_report(**kwargs)
 
         output = io.StringIO()
         writer = csv.writer(output)
         writer.writerow([
             "Registration ID", "Event Title", "Student Name", "Roll Number", "Email", "Phone",
-            "Department", "College", "Reg Status", "Payment Method", "Price (INR)", "Registered At (IST)",
+            "Department", "Academic Year", "College", "Reg Status", "Payment Method", "Price (INR)", "Registered At (IST)",
             "Ticket Code", "Gate Status", "Gate Validated At (IST)", "Food Status"
         ])
 
         for r in rows:
             values = [
                 r["id"], r["event_title"], r["full_name"], r["roll_number"], r["email"], r["phone"],
-                r["department"], r["college"], r["status"], r["payment_method"], r["ticket_price"],
+                r["department"], r.get("academic_year") or "", r["college"], r["status"], r["payment_method"], r["ticket_price"],
                 format_ist_display(r["created_at"]),
                 r.get("ticket_code") or "", r.get("ticket_status") or "",
                 format_ist_display(r.get("gate_validated_at")),

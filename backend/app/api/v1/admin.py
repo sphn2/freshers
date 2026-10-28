@@ -262,7 +262,7 @@ def get_dashboard_metrics():
         return internal_error("fetching dashboard metrics")
 
 @admin_bp.route("/reports/registrations", methods=["GET"])
-@require_roles("ADMIN", "EVENT_MANAGER")
+@require_roles("ADMIN", "EVENT_MANAGER", "SUPER_ADMIN")
 def report_registrations():
     try:
         event_id = request.args.get("event_id")
@@ -270,8 +270,43 @@ def report_registrations():
             return jsonify({"error": "Event managers must select an assigned event."}), 400
         if event_id and not enforce_event_access(event_id):
             return jsonify({"error": "Forbidden. Event not assigned to you."}), 403
-        limit = int(request.args.get("limit", 200))
-        rows = report_service.get_registrations_report(event_id=event_id, limit=limit)
+        
+        search = request.args.get("search")
+        limit_arg = request.args.get("limit")
+        default_limit = 5000 if not search else 20000
+        limit = min(int(limit_arg), 50000) if limit_arg else default_limit
+
+        departments = request.args.getlist("department")
+        if not departments and request.args.get("department"):
+            departments = [d.strip() for d in request.args.get("department").split(",") if d.strip()]
+        if request.args.get("departments"):
+            departments = [d.strip() for d in request.args.get("departments").split(",") if d.strip()]
+
+        statuses = request.args.getlist("status")
+        if not statuses and request.args.get("status"):
+            statuses = [s.strip().upper() for s in request.args.get("status").split(",") if s.strip()]
+        if request.args.get("statuses"):
+            statuses = [s.strip().upper() for s in request.args.get("statuses").split(",") if s.strip()]
+
+        years = request.args.getlist("year")
+        if not years and request.args.get("year"):
+            years = [y.strip() for y in request.args.get("year").split(",") if y.strip()]
+        if request.args.get("years"):
+            years = [y.strip() for y in request.args.get("years").split(",") if y.strip()]
+
+        gate_status = request.args.get("gate_status")
+        food_status = request.args.get("food_status")
+
+        rows = report_service.get_registrations_report(
+            event_id=event_id,
+            limit=limit,
+            search=search,
+            year=years,
+            department=departments,
+            status=statuses,
+            gate_status=gate_status,
+            food_status=food_status
+        )
         return jsonify({"registrations": rows}), 200
     except Exception:
         return internal_error("building the registration report")
@@ -516,7 +551,7 @@ def report_email_logs():
         return internal_error("fetching email logs")
 
 @admin_bp.route("/reports/registrations/csv", methods=["GET"])
-@require_roles("ADMIN", "EVENT_MANAGER")
+@require_roles("ADMIN", "EVENT_MANAGER", "SUPER_ADMIN")
 def export_csv():
     try:
         event_id = request.args.get("event_id")
@@ -524,7 +559,39 @@ def export_csv():
             return jsonify({"error": "Event managers must select an assigned event."}), 400
         if event_id and not enforce_event_access(event_id):
             return jsonify({"error": "Forbidden. Event not assigned to you."}), 403
-        csv_data = report_service.export_registrations_csv(event_id=event_id)
+
+        search = request.args.get("search")
+
+        departments = request.args.getlist("department")
+        if not departments and request.args.get("department"):
+            departments = [d.strip() for d in request.args.get("department").split(",") if d.strip()]
+        if request.args.get("departments"):
+            departments = [d.strip() for d in request.args.get("departments").split(",") if d.strip()]
+
+        statuses = request.args.getlist("status")
+        if not statuses and request.args.get("status"):
+            statuses = [s.strip().upper() for s in request.args.get("status").split(",") if s.strip()]
+        if request.args.get("statuses"):
+            statuses = [s.strip().upper() for s in request.args.get("statuses").split(",") if s.strip()]
+
+        years = request.args.getlist("year")
+        if not years and request.args.get("year"):
+            years = [y.strip() for y in request.args.get("year").split(",") if y.strip()]
+        if request.args.get("years"):
+            years = [y.strip() for y in request.args.get("years").split(",") if y.strip()]
+
+        gate_status = request.args.get("gate_status")
+        food_status = request.args.get("food_status")
+
+        csv_data = report_service.export_registrations_csv(
+            event_id=event_id,
+            search=search,
+            year=years,
+            department=departments,
+            status=statuses,
+            gate_status=gate_status,
+            food_status=food_status
+        )
         filename = f"sphoorthy_registrations_{event_id or 'all'}.csv"
         return Response(
             csv_data,
@@ -543,7 +610,7 @@ def report_payments():
             return jsonify({"error": "Event managers must select an assigned event."}), 400
         if event_id and not enforce_event_access(event_id):
             return jsonify({"error": "Forbidden. Event not assigned to you."}), 403
-        limit = int(request.args.get("limit", 200))
+        limit = min(int(request.args.get("limit", 2000)), 10000)
         rows = report_service.get_payments_report(event_id=event_id, limit=limit)
         return jsonify({"payments": rows}), 200
     except Exception:
@@ -558,7 +625,7 @@ def report_entries():
             return jsonify({"error": "Event managers must select an assigned event."}), 400
         if event_id and not enforce_event_access(event_id):
             return jsonify({"error": "Forbidden. Event not assigned to you."}), 403
-        limit = int(request.args.get("limit", 200))
+        limit = min(int(request.args.get("limit", 2000)), 10000)
         rows = report_service.get_gate_entries_report(event_id=event_id, limit=limit)
         return jsonify({"entries": rows}), 200
     except Exception:
@@ -573,7 +640,7 @@ def report_offline():
             return jsonify({"error": "Event managers must select an assigned event."}), 400
         if event_id and not enforce_event_access(event_id):
             return jsonify({"error": "Forbidden. Event not assigned to you."}), 403
-        limit = int(request.args.get("limit", 200))
+        limit = min(int(request.args.get("limit", 2000)), 10000)
         rows = report_service.get_offline_collections_report(event_id=event_id, limit=limit)
         return jsonify({"offline_collections": rows}), 200
     except Exception:

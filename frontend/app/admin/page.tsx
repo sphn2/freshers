@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { api } from "@/lib/api";
+import { supabase } from "@/lib/supabase";
 import { ProtectedRoute, useAuth } from "@/lib/auth";
 import { errorMessage } from "@/lib/types";
 import { registrationAvailability } from "@/lib/registration";
@@ -29,8 +30,22 @@ import {
   UserRoundPlus, KeyRound, Mail, Edit3, Search, X,
   Database, UploadCloud, Download, Trash2, Lock, FileUp,
   TrendingUp, BarChart3, Receipt, Printer, CheckSquare, Building2,
-  Megaphone, Wrench, AlertOctagon
+  Megaphone, Wrench, AlertOctagon, Filter, Check, GraduationCap, Utensils, RotateCcw
 } from "lucide-react";
+
+const ALL_REGISTRATION_DEPARTMENTS = ["CSE", "ECE", "CSE-CS", "CSE - AIML", "CSE - DS", "CIVIL", "MECH", "EEE", "IT"];
+const ALL_REGISTRATION_YEARS = [
+  { key: "1st Year", label: "1st Year (26)", prefix: "26" },
+  { key: "2nd Year", label: "2nd Year (25)", prefix: "25" },
+  { key: "3rd Year", label: "3rd Year (24)", prefix: "24" },
+  { key: "4th Year", label: "4th Year (23)", prefix: "23" },
+  { key: "Other", label: "Other", prefix: "" },
+];
+const ALL_REGISTRATION_STATUSES = [
+  { key: "PAID", label: "Paid Online" },
+  { key: "OFFLINE_PAID", label: "Paid Offline (Cash)" },
+  { key: "PENDING_PAYMENT", label: "Pending Payment" },
+];
 
 export default function AdminDashboardPage() {
   return (
@@ -108,6 +123,12 @@ function AdminDashboardContent() {
   const [resendingTicketId, setResendingTicketId] = useState<string | null>(null);
   const [resendingAll, setResendingAll] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [selectedYears, setSelectedYears] = useState<string[]>([]);
+  const [selectedDepts, setSelectedDepts] = useState<string[]>([]);
+  const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
+  const [selectedGateStatus, setSelectedGateStatus] = useState<string>("ALL");
+  const [selectedFoodStatus, setSelectedFoodStatus] = useState<string>("ALL");
+  const [isSearchingServer, setIsSearchingServer] = useState<boolean>(false);
   const [feeSettings, setFeeSettings] = useState<{ enabled: boolean; amount: number } | null>(null);
   const [feeAmountDraft, setFeeAmountDraft] = useState<string>("3.79");
   const [feeEnabledDraft, setFeeEnabledDraft] = useState<boolean>(true);
@@ -307,7 +328,185 @@ function AdminDashboardContent() {
     }
   };
 
+  const toggleYearFilter = (yr: string) => {
+    setSelectedYears((prev) =>
+      prev.includes(yr) ? prev.filter((y) => y !== yr) : [...prev, yr]
+    );
+  };
+
+  const toggleDeptFilter = (dept: string) => {
+    setSelectedDepts((prev) =>
+      prev.includes(dept) ? prev.filter((d) => d !== dept) : [...prev, dept]
+    );
+  };
+
+  const toggleStatusFilter = (st: string) => {
+    setSelectedStatuses((prev) =>
+      prev.includes(st) ? prev.filter((s) => s !== st) : [...prev, st]
+    );
+  };
+
+  const hasActiveFilters = Boolean(
+    searchQuery.trim() ||
+    selectedYears.length > 0 ||
+    selectedDepts.length > 0 ||
+    selectedStatuses.length > 0 ||
+    selectedGateStatus !== "ALL" ||
+    selectedFoodStatus !== "ALL"
+  );
+
+  const resetAllFilters = () => {
+    setSearchQuery("");
+    setSelectedYears([]);
+    setSelectedDepts([]);
+    setSelectedStatuses([]);
+    setSelectedGateStatus("ALL");
+    setSelectedFoodStatus("ALL");
+    void loadRegistrationsReport("", [], [], [], "ALL", "ALL");
+  };
+
+  const exportClientCsv = (rows: ReportRow[]) => {
+    const headers = [
+      "Registration ID", "Event Title", "Student Name", "Roll Number", "Academic Year", "Email", "Phone",
+      "Department", "College", "Reg Status", "Payment Method", "Price (INR)", "Registered At (IST)",
+      "Ticket Code", "Gate Status", "Gate Validated At (IST)", "Food Status"
+    ];
+    const csvLines = [headers.join(",")];
+    for (const r of rows) {
+      const vals = [
+        r.id || r.registration_id || "",
+        r.event_title || "",
+        r.full_name || "",
+        r.roll_number || "",
+        r.academic_year || "",
+        r.email || "",
+        r.phone || "",
+        r.department || "",
+        r.college || "",
+        r.status || "",
+        r.payment_method || "",
+        r.ticket_price || "",
+        r.created_at || "",
+        r.ticket_code || "",
+        r.ticket_status || "",
+        r.gate_validated_at || "",
+        r.food_status || ""
+      ];
+      csvLines.push(vals.map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(","));
+    }
+    const blob = new Blob([csvLines.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "sphoorthy_registrations_filtered.csv";
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  const loadRegistrationsReport = async (
+    customSearch?: string,
+    customYears?: string[],
+    customDepts?: string[],
+    customStatuses?: string[],
+    customGate?: string,
+    customFood?: string
+  ) => {
+    setReportLoading(true);
+    setIsSearchingServer(true);
+    try {
+      const eid = selectedEventId || undefined;
+      const search = customSearch !== undefined ? customSearch : searchQuery;
+      const years = customYears !== undefined ? customYears : selectedYears;
+      const departments = customDepts !== undefined ? customDepts : selectedDepts;
+      const statuses = customStatuses !== undefined ? customStatuses : selectedStatuses;
+      const gate_status = customGate !== undefined ? customGate : selectedGateStatus;
+      const food_status = customFood !== undefined ? customFood : selectedFoodStatus;
+
+      const r = await api.getRegistrationsReport(eid, {
+        limit: 10000,
+        search: search.trim() || undefined,
+        years: years.length > 0 ? years : undefined,
+        departments: departments.length > 0 ? departments : undefined,
+        statuses: statuses.length > 0 ? statuses : undefined,
+        gate_status: gate_status !== "ALL" ? gate_status : undefined,
+        food_status: food_status !== "ALL" ? food_status : undefined,
+      });
+
+      setReportData(r.registrations || []);
+      setStatusMsg(null);
+    } catch (err: unknown) {
+      if (supabase) {
+        try {
+          let query = supabase.from("registrations").select(`
+            id, full_name, roll_number, email, phone, department, college, status, payment_method, ticket_price, created_at,
+            events!inner(title)
+          `);
+          if (selectedEventId) query = query.eq("event_id", selectedEventId);
+          const search = customSearch !== undefined ? customSearch : searchQuery;
+          if (search.trim()) {
+            const sq = search.trim();
+            query = query.or(`full_name.ilike.%${sq}%,roll_number.ilike.%${sq}%,email.ilike.%${sq}%,phone.ilike.%${sq}%`);
+          }
+          const { data: supaRows, error: supaErr } = await query.limit(5000);
+          if (!supaErr && supaRows) {
+            const formatted = supaRows.map((r: any) => ({
+              ...r,
+              event_title: r.events?.title || "",
+              academic_year: r.roll_number?.trim().startsWith("26") ? "1st Year" :
+                             r.roll_number?.trim().startsWith("25") ? "2nd Year" :
+                             r.roll_number?.trim().startsWith("24") ? "3rd Year" :
+                             r.roll_number?.trim().startsWith("23") ? "4th Year" : "Other"
+            }));
+            setReportData(formatted);
+            setStatusMsg(null);
+            return;
+          }
+        } catch {
+          // ignore fallback error and keep primary error
+        }
+      }
+      setStatusMsg(`❌ ${errorMessage(err, "Failed loading registrations report.")}`);
+    } finally {
+      setReportLoading(false);
+      setIsSearchingServer(false);
+    }
+  };
+
+  const isFirstRender = useRef(true);
+  useEffect(() => {
+    if (activeTab !== "registrations") return;
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    const timer = setTimeout(() => {
+      void loadRegistrationsReport(
+        searchQuery,
+        selectedYears,
+        selectedDepts,
+        selectedStatuses,
+        selectedGateStatus,
+        selectedFoodStatus
+      );
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [searchQuery, selectedYears, selectedDepts, selectedStatuses, selectedGateStatus, selectedFoodStatus]);
+
   const filteredReportData = reportData.filter((row) => {
+    if (activeTab === "registrations") {
+      if (!searchQuery.trim()) return true;
+      const q = searchQuery.toLowerCase().trim();
+      return (
+        String(row.full_name || "").toLowerCase().includes(q) ||
+        String(row.roll_number || "").toLowerCase().includes(q) ||
+        String(row.email || "").toLowerCase().includes(q) ||
+        String(row.phone || "").toLowerCase().includes(q) ||
+        String(row.ticket_code || "").toLowerCase().includes(q) ||
+        String(row.department || "").toLowerCase().includes(q) ||
+        String(row.academic_year || "").toLowerCase().includes(q) ||
+        String(row.event_title || "").toLowerCase().includes(q)
+      );
+    }
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase().trim();
     return Object.values(row).some((val) => {
@@ -572,8 +771,8 @@ function AdminDashboardContent() {
       let data: ReportRow[] = [];
       const eid = selectedEventId || undefined;
       if (tab === "registrations") {
-        const r = await api.getRegistrationsReport(eid);
-        data = r.registrations || [];
+        await loadRegistrationsReport();
+        return;
       } else if (tab === "payments") {
         const r = await api.getPaymentsReport(eid);
         data = r.payments || [];
@@ -788,15 +987,31 @@ function AdminDashboardContent() {
 
   const handleDownloadCSV = async () => {
     try {
-      const blob = await api.downloadRegistrationsCsv(selectedEventId || undefined);
+      const filters = activeTab === "registrations" ? {
+        search: searchQuery.trim() || undefined,
+        years: selectedYears.length > 0 ? selectedYears : undefined,
+        departments: selectedDepts.length > 0 ? selectedDepts : undefined,
+        statuses: selectedStatuses.length > 0 ? selectedStatuses : undefined,
+        gate_status: selectedGateStatus !== "ALL" ? selectedGateStatus : undefined,
+        food_status: selectedFoodStatus !== "ALL" ? selectedFoodStatus : undefined,
+      } : undefined;
+
+      const blob = await api.downloadRegistrationsCsv(selectedEventId || undefined, filters);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "sphoorthy_registrations.csv";
+      const isFiltered = activeTab === "registrations" && hasActiveFilters;
+      a.download = isFiltered ? "sphoorthy_registrations_filtered.csv" : "sphoorthy_registrations.csv";
       a.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setStatusMsg("✅ Exported filtered registrations successfully!");
     } catch (err: unknown) {
-      setStatusMsg(`❌ ${errorMessage(err, "Failed exporting registrations.")}`);
+      if (filteredReportData.length > 0) {
+        exportClientCsv(filteredReportData);
+        setStatusMsg("✅ Exported filtered registrations from active view!");
+      } else {
+        setStatusMsg(`❌ ${errorMessage(err, "Failed exporting registrations.")}`);
+      }
     }
   };
 
@@ -2326,58 +2541,287 @@ function AdminDashboardContent() {
       {/* TAB: Data Reports */}
       {["registrations", "payments", "entries", "offline", "audit"].includes(activeTab) && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div className="flex items-center gap-3 flex-wrap flex-1">
-              <h3 className="text-sm font-extrabold text-slate-900 capitalize">
-                {activeTab === "entries" ? "Gate Entries" : activeTab === "audit" ? "Audit Logs" : activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} Report
-              </h3>
-              <div className="relative min-w-[240px] max-w-md flex-1">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search by Roll No, Name, Email, Ticket Code, Phone..."
-                  className="w-full pl-9 pr-8 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-pink-500 transition"
-                />
-                {searchQuery && (
-                  <button
-                    onClick={() => setSearchQuery("")}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
-            </div>
-            <div className="flex gap-2 items-center">
-              <span className="text-xs text-slate-500 font-medium">
-                {filteredReportData.length} {searchQuery ? `of ${reportData.length}` : ""} records
-              </span>
-              {activeTab === "registrations" && (
-                <>
+          {activeTab === "registrations" ? (
+            <div className="bg-gradient-to-r from-slate-50 via-white to-purple-50/40 border border-slate-200/90 rounded-2xl p-4 space-y-3.5 shadow-xs">
+              {/* Top Bar: Live DB Search, Stats, Actions */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                <div className="relative flex-1 max-w-xl">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        void loadRegistrationsReport(e.currentTarget.value);
+                      }
+                    }}
+                    placeholder="Search roll number, name, email, ticket code, phone across ALL records..."
+                    className="w-full pl-9 pr-24 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100 transition shadow-2xs font-medium"
+                  />
+                  <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                    {isSearchingServer && (
+                      <RefreshCw className="w-3.5 h-3.5 text-purple-600 animate-spin" />
+                    )}
+                    {searchQuery && (
+                      <button
+                        onClick={() => {
+                          setSearchQuery("");
+                          void loadRegistrationsReport("");
+                        }}
+                        className="text-slate-400 hover:text-slate-600 p-0.5 rounded transition"
+                        title="Clear search"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    <button
+                      onClick={() => void loadRegistrationsReport(searchQuery)}
+                      className="px-2 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-md text-[10px] font-bold transition shadow-2xs"
+                      title="Search backend database"
+                    >
+                      Search
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-semibold text-slate-600 bg-white border border-slate-200 px-2.5 py-1.5 rounded-lg shadow-2xs">
+                    <strong className="text-purple-700 font-extrabold">{filteredReportData.length}</strong> {hasActiveFilters ? "filtered" : "total"} records
+                  </span>
+                  {hasActiveFilters && (
+                    <button
+                      onClick={resetAllFilters}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-bold transition shadow-2xs cursor-pointer"
+                      title="Clear all active filters"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>Reset</span>
+                    </button>
+                  )}
                   <button
                     onClick={() => void handleResendAllTickets()}
                     disabled={resendingAll}
                     title="Resend ticket pass emails to all registered participants"
-                    className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 transition shadow-sm disabled:opacity-50"
+                    className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 transition shadow-2xs disabled:opacity-50"
                   >
                     <Mail className="w-3.5 h-3.5" />
-                    <span>{resendingAll ? "Sending to All…" : "Resend Mails to All"}</span>
+                    <span>{resendingAll ? "Sending to All…" : "Resend Mails"}</span>
                   </button>
-                  <button onClick={handleDownloadCSV}
-                    className="px-3 py-1.5 bg-pink-600 hover:bg-pink-700 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 transition shadow-sm">
+                  <button
+                    onClick={handleDownloadCSV}
+                    className="px-3 py-1.5 bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-700 hover:to-rose-700 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 transition shadow-2xs"
+                    title="Export matching records to CSV"
+                  >
                     <FileSpreadsheet className="w-3.5 h-3.5" />
-                    <span>Export CSV</span>
+                    <span>{hasActiveFilters ? "Export Filtered CSV" : "Export CSV"}</span>
                   </button>
-                </>
-              )}
-              <button onClick={() => loadReport(activeTab)}
-                className="px-3 py-1.5 bg-slate-100 text-slate-700 text-xs font-bold rounded-lg flex items-center gap-1.5 transition hover:bg-slate-200">
-                <RefreshCw className={`w-3.5 h-3.5 ${reportLoading ? "animate-spin" : ""}`} />
-              </button>
+                  <button
+                    onClick={() => loadReport("registrations")}
+                    className="p-2 bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-100 transition shadow-2xs cursor-pointer"
+                    title="Refresh registrations"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${reportLoading ? "animate-spin text-purple-600" : ""}`} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Filter Controls Row */}
+              <div className="pt-2.5 border-t border-slate-200/70 space-y-2.5 text-xs">
+                {/* Year and Department Filters */}
+                <div className="flex flex-col lg:flex-row lg:items-center gap-3">
+                  {/* Year Filter */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 flex items-center gap-1">
+                      <GraduationCap className="w-3.5 h-3.5 text-purple-600" />
+                      Year:
+                    </span>
+                    <div className="flex items-center gap-1 flex-wrap">
+                      {ALL_REGISTRATION_YEARS.map((yr) => {
+                        const active = selectedYears.includes(yr.key);
+                        return (
+                          <button
+                            key={yr.key}
+                            type="button"
+                            onClick={() => toggleYearFilter(yr.key)}
+                            className={`px-2 py-0.5 rounded-md text-[11px] font-bold transition flex items-center gap-1 border cursor-pointer ${
+                              active
+                                ? "bg-purple-600 text-white border-purple-600 shadow-2xs"
+                                : "bg-white text-slate-600 border-slate-200 hover:bg-slate-100 hover:border-slate-300"
+                            }`}
+                          >
+                            {active && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                            {yr.label}
+                          </button>
+                        );
+                      })}
+                      {selectedYears.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedYears([])}
+                          className="text-[10px] text-purple-700 hover:underline font-semibold ml-1 cursor-pointer"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Department Multi-Select Filter */}
+                  <div className="flex items-center gap-2 flex-wrap lg:border-l lg:border-slate-200 lg:pl-3">
+                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 flex items-center gap-1">
+                      <Building2 className="w-3.5 h-3.5 text-indigo-600" />
+                      Dept:
+                    </span>
+                    <div className="flex items-center gap-1 flex-wrap">
+                      {ALL_REGISTRATION_DEPARTMENTS.map((dept) => {
+                        const active = selectedDepts.includes(dept);
+                        return (
+                          <button
+                            key={dept}
+                            type="button"
+                            onClick={() => toggleDeptFilter(dept)}
+                            className={`px-2 py-0.5 rounded-md text-[11px] font-bold transition flex items-center gap-1 border cursor-pointer ${
+                              active
+                                ? "bg-indigo-600 text-white border-indigo-600 shadow-2xs"
+                                : "bg-white text-slate-600 border-slate-200 hover:bg-slate-100 hover:border-slate-300"
+                            }`}
+                          >
+                            {active && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                            {dept}
+                          </button>
+                        );
+                      })}
+                      {selectedDepts.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedDepts([])}
+                          className="text-[10px] text-indigo-700 hover:underline font-semibold ml-1 cursor-pointer"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Payment, Gate, and Food Filters */}
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 flex-wrap">
+                  {/* Payment Status Multi-Select Filter */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 flex items-center gap-1">
+                      <CreditCard className="w-3.5 h-3.5 text-emerald-600" />
+                      Payment:
+                    </span>
+                    <div className="flex items-center gap-1 flex-wrap">
+                      {ALL_REGISTRATION_STATUSES.map((st) => {
+                        const active = selectedStatuses.includes(st.key);
+                        return (
+                          <button
+                            key={st.key}
+                            type="button"
+                            onClick={() => toggleStatusFilter(st.key)}
+                            className={`px-2.5 py-0.5 rounded-md text-[11px] font-bold transition flex items-center gap-1 border cursor-pointer ${
+                              active
+                                ? st.key === "PAID"
+                                  ? "bg-emerald-600 text-white border-emerald-600 shadow-2xs"
+                                  : st.key === "OFFLINE_PAID"
+                                  ? "bg-pink-600 text-white border-pink-600 shadow-2xs"
+                                  : "bg-amber-600 text-white border-amber-600 shadow-2xs"
+                                : "bg-white text-slate-600 border-slate-200 hover:bg-slate-100"
+                            }`}
+                          >
+                            {active && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                            {st.label}
+                          </button>
+                        );
+                      })}
+                      {selectedStatuses.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedStatuses([])}
+                          className="text-[10px] text-slate-500 hover:underline font-semibold ml-1 cursor-pointer"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Gate & Food Status Selectors */}
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 flex items-center gap-1">
+                        <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
+                        Gate:
+                      </span>
+                      <select
+                        value={selectedGateStatus}
+                        onChange={(e) => setSelectedGateStatus(e.target.value)}
+                        className="bg-white border border-slate-200 text-slate-700 text-xs font-bold rounded-lg px-2.5 py-1 focus:outline-none focus:border-purple-500 shadow-2xs cursor-pointer"
+                      >
+                        <option value="ALL">All Gate</option>
+                        <option value="VALIDATED">✓ Validated (Entered)</option>
+                        <option value="NOT_VALIDATED">✕ Not Validated</option>
+                      </select>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 flex items-center gap-1">
+                        <Utensils className="w-3.5 h-3.5 text-amber-600" />
+                        Food:
+                      </span>
+                      <select
+                        value={selectedFoodStatus}
+                        onChange={(e) => setSelectedFoodStatus(e.target.value)}
+                        className="bg-white border border-slate-200 text-slate-700 text-xs font-bold rounded-lg px-2.5 py-1 focus:outline-none focus:border-purple-500 shadow-2xs cursor-pointer"
+                      >
+                        <option value="ALL">All Food</option>
+                        <option value="CLAIMED">✓ Claimed</option>
+                        <option value="NOT_CLAIMED">✕ Not Claimed</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-3 flex-wrap flex-1">
+                <h3 className="text-sm font-extrabold text-slate-900 capitalize">
+                  {activeTab === "entries" ? "Gate Entries" : activeTab === "audit" ? "Audit Logs" : activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} Report
+                </h3>
+                <div className="relative min-w-[240px] max-w-md flex-1">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search by Roll No, Name, Email, Ticket Code, Phone..."
+                    className="w-full pl-9 pr-8 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-pink-500 transition"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="flex gap-2 items-center">
+                <span className="text-xs text-slate-500 font-medium">
+                  {filteredReportData.length} {searchQuery ? `of ${reportData.length}` : ""} records
+                </span>
+                <button onClick={() => loadReport(activeTab)}
+                  className="px-3 py-1.5 bg-slate-100 text-slate-700 text-xs font-bold rounded-lg flex items-center gap-1.5 transition hover:bg-slate-200">
+                  <RefreshCw className={`w-3.5 h-3.5 ${reportLoading ? "animate-spin" : ""}`} />
+                </button>
+              </div>
+            </div>
+          )}
 
           {reportLoading ? (
             <div className="flex items-center justify-center p-8 gap-2 text-slate-400">
@@ -2394,6 +2838,8 @@ function AdminDashboardContent() {
                         <>
                           <th className="px-4 py-3 text-left text-slate-700 font-extrabold">Name</th>
                           <th className="px-4 py-3 text-left text-slate-700 font-extrabold">Roll No.</th>
+                          <th className="px-4 py-3 text-left text-slate-700 font-extrabold">Year</th>
+                          <th className="px-4 py-3 text-left text-slate-700 font-extrabold">Dept</th>
                           <th className="px-4 py-3 text-left text-slate-700 font-extrabold">Email</th>
                           <th className="px-4 py-3 text-left text-slate-700 font-extrabold">Event</th>
                           <th className="px-4 py-3 text-left text-slate-700 font-extrabold">Status</th>
@@ -2453,8 +2899,8 @@ function AdminDashboardContent() {
                   <tbody className="divide-y divide-slate-100">
                     {filteredReportData.length === 0 ? (
                       <tr>
-                        <td colSpan={12} className="px-4 py-8 text-center text-slate-400 font-medium">
-                          {searchQuery ? "No matching records found." : "No data found for this report."}
+                        <td colSpan={activeTab === "registrations" ? 14 : 12} className="px-4 py-8 text-center text-slate-400 font-medium">
+                          {searchQuery || hasActiveFilters ? "No matching records found for active search/filters." : "No data found for this report."}
                         </td>
                       </tr>
                     ) : filteredReportData.map((row, i) => {
@@ -2465,6 +2911,16 @@ function AdminDashboardContent() {
                           <>
                             <td className="px-4 py-3 text-slate-900 font-bold">{row.full_name}</td>
                             <td className="px-4 py-3 font-mono text-pink-600 font-bold">{row.roll_number}</td>
+                            <td className="px-4 py-3">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200 whitespace-nowrap">
+                                {String(row.academic_year || (String(row.roll_number || "").startsWith("26") ? "1st Year" : String(row.roll_number || "").startsWith("25") ? "2nd Year" : String(row.roll_number || "").startsWith("24") ? "3rd Year" : String(row.roll_number || "").startsWith("23") ? "4th Year" : "Other"))}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200 whitespace-nowrap">
+                                {String(row.department || "—")}
+                              </span>
+                            </td>
                             <td className="px-4 py-3 font-mono text-slate-600">
                               {editingEmailRegId === regId ? (
                                 <div className="flex items-center gap-1.5 min-w-[220px]">

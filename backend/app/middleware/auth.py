@@ -114,6 +114,8 @@ def _set_test_identity(token: str = None) -> bool:
         "email": request.headers.get("X-Test-User-Email", f"{role_name.lower()}@sphoorthy.ac.in"),
     }
     g.user_roles = [role_name]
+    if role_name == "SUPER_ADMIN" and "ADMIN" not in g.user_roles:
+        g.user_roles.append("ADMIN")
     return True
 
 
@@ -179,7 +181,7 @@ def require_roles(*allowed_roles):
                 return jsonify({"error": "Authorization service is temporarily unavailable."}), g.auth_error
             if not g.current_user:
                 return jsonify({"error": "Unauthorized. Missing authentication."}), 401
-            if not any(role in g.user_roles for role in allowed_roles):
+            if not any(role in g.user_roles for role in allowed_roles) and "SUPER_ADMIN" not in g.user_roles:
                 return jsonify({"error": "Forbidden. Your account does not have permission for this action."}), 403
             return f(*args, **kwargs)
         return decorated
