@@ -4,33 +4,64 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { errorMessage } from "@/lib/types";
-import type { Event } from "@/lib/types";
+import type { Event, BannerSettings } from "@/lib/types";
 import { registrationAvailability } from "@/lib/registration";
 import { ArrowUpRight, CalendarDays, Clock, MapPin, Sparkles, Ticket, Users, CheckCircle2, ShieldCheck } from "lucide-react";
 import VerifyPaymentModal from "@/components/VerifyPaymentModal";
+import RegistrationPopupModal from "@/components/RegistrationPopupModal";
+import RegistrationsClosedView from "@/components/RegistrationsClosedView";
 
 export default function StudentHomePage() {
   const [events, setEvents] = useState<Event[]>([]);
+  const [bannerSettings, setBannerSettings] = useState<BannerSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showVerifyModal, setShowVerifyModal] = useState(false);
 
   useEffect(() => {
-    async function loadEvents() {
+    async function loadData() {
       try {
-        const data = await api.getOperationalEvents();
-        setEvents(data.events);
-      } catch (err: unknown) {
-        setError(errorMessage(err, "We couldn't load the event calendar."));
+        const [eventsData, bannersData] = await Promise.allSettled([
+          api.getOperationalEvents(),
+          api.getPublicBanners(),
+        ]);
+        if (eventsData.status === "fulfilled") {
+          setEvents(eventsData.value.events);
+        } else {
+          setError(errorMessage(eventsData.reason, "We couldn't load the event calendar."));
+        }
+        if (bannersData.status === "fulfilled") {
+          setBannerSettings(bannersData.value);
+        }
       } finally {
         setLoading(false);
       }
     }
-    void loadEvents();
+    void loadData();
   }, []);
 
   // Featured UDBHAV '26 Event or default first event
   const mainEvent = events.find((e) => e.slug === "freshers-2k26") || events[0];
+
+  // Determine if registrations are closed
+  const isPastDeadline = Boolean(
+    bannerSettings?.popup_closing_time &&
+    !isNaN(new Date(bannerSettings.popup_closing_time).getTime()) &&
+    new Date(bannerSettings.popup_closing_time).getTime() <= Date.now()
+  );
+  const isExplicitlyClosed = Boolean(bannerSettings?.registrations_closed);
+  const hasNoOpenEvents = events.length > 0 && events.every((e) => !registrationAvailability(e).open);
+  const isClosed = isExplicitlyClosed || isPastDeadline || (events.length > 0 && hasNoOpenEvents);
+
+  if (!loading && isClosed) {
+    return (
+      <RegistrationsClosedView
+        eventName={mainEvent?.title || "UDBHAV '26 — FRESHERS CELEBRATION"}
+        offlineContactDetails={bannerSettings?.offline_contact_details}
+        closedNoticeText={bannerSettings?.registrations_closed_text}
+      />
+    );
+  }
 
   return (
     <div className="space-y-12">
@@ -271,6 +302,8 @@ export default function StudentHomePage() {
         isOpen={showVerifyModal}
         onClose={() => setShowVerifyModal(false)}
       />
+
+      {bannerSettings && <RegistrationPopupModal banners={bannerSettings} />}
     </div>
   );
 }

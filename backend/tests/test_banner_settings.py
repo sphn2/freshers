@@ -20,6 +20,11 @@ def test_get_public_banners(client):
     assert "registrations_closed_text" in data
     assert "maintenance_mode" in data
     assert "maintenance_mode_text" in data
+    assert "popup_enabled" in data
+    assert "popup_title" in data
+    assert "popup_closing_time" in data
+    assert "popup_message" in data
+    assert "offline_contact_details" in data
 
 def test_admin_can_toggle_registrations_closed(client):
     headers = {
@@ -146,3 +151,43 @@ def test_registration_blocked_when_registrations_closed_active(client):
         assert "registrations are closed" in res.get_json()["error"].lower()
     finally:
         client.put("/api/v1/admin/settings/banners", headers=admin_headers, json={"registrations_closed": False})
+
+
+def test_super_admin_can_toggle_and_configure_popup_window(client):
+    super_headers = {
+        "X-Test-User-Role": "SUPER_ADMIN",
+        "X-Test-User-Id": "test-super-1",
+        "X-Test-User-Email": "super@sphoorthy.ac.in",
+    }
+    res = client.put(
+        "/api/v1/admin/settings/banners",
+        headers=super_headers,
+        json={
+            "popup_enabled": True,
+            "popup_title": "HURRY UP! REGISTRATIONS CLOSING SOON!",
+            "popup_closing_time": "2026-10-31T23:59:00",
+            "popup_message": "Registrations will close on 31st October 2026 at 11:59 PM. Reserve your tickets now!",
+            "offline_contact_details": "Sai Harsha (8179645560), Rahul (9876543210)",
+        },
+    )
+    assert res.status_code == 200
+    data = res.get_json()["settings"]
+    assert data["popup_enabled"] is True
+    assert data["popup_title"] == "HURRY UP! REGISTRATIONS CLOSING SOON!"
+    assert data["popup_closing_time"] == "2026-10-31T23:59:00"
+    assert "Sai Harsha" in data["offline_contact_details"]
+
+    # Public endpoint reflects updated settings
+    pub_res = client.get("/api/v1/banners")
+    assert pub_res.status_code == 200
+    pub_data = pub_res.get_json()
+    assert pub_data["popup_enabled"] is True
+    assert pub_data["popup_title"] == "HURRY UP! REGISTRATIONS CLOSING SOON!"
+
+    # Restore
+    client.put(
+        "/api/v1/admin/settings/banners",
+        headers=super_headers,
+        json={"popup_enabled": False},
+    )
+

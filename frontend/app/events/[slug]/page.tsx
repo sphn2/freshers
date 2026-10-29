@@ -11,6 +11,7 @@ import Link from "next/link";
 import RulesModal from "@/components/RulesModal";
 import VerifyPaymentModal from "@/components/VerifyPaymentModal";
 import CheckoutProgressLoader from "@/components/CheckoutProgressLoader";
+import RegistrationsClosedView from "@/components/RegistrationsClosedView";
 
 export default function EventRegistrationPage() {
   const { slug } = useParams<{ slug: string }>();
@@ -162,6 +163,23 @@ export default function EventRegistrationPage() {
   }
 
   const availability = registrationAvailability(event);
+
+  const isPastDeadline = Boolean(
+    bannerSettings?.popup_closing_time &&
+    !isNaN(new Date(bannerSettings.popup_closing_time).getTime()) &&
+    new Date(bannerSettings.popup_closing_time).getTime() <= Date.now()
+  );
+  const isExplicitlyClosed = Boolean(bannerSettings?.registrations_closed);
+
+  if (isExplicitlyClosed || isPastDeadline || (!availability.open && !availability.isUpcoming)) {
+    return (
+      <RegistrationsClosedView
+        eventName={event.title}
+        offlineContactDetails={bannerSettings?.offline_contact_details}
+        closedNoticeText={bannerSettings?.registrations_closed_text}
+      />
+    );
+  }
   const normalizedRollNumber = rollNumber.trim().toUpperCase();
   const ticketPrice = normalizedRollNumber.startsWith("26")
     ? event.first_year_ticket_price

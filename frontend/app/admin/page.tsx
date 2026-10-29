@@ -30,8 +30,10 @@ import {
   UserRoundPlus, KeyRound, Mail, Edit3, Search, X,
   Database, UploadCloud, Download, Trash2, Lock, FileUp,
   TrendingUp, BarChart3, Receipt, Printer, CheckSquare, Building2,
-  Megaphone, Wrench, AlertOctagon, Filter, Check, GraduationCap, Utensils, RotateCcw
+  Megaphone, Wrench, AlertOctagon, Filter, Check, GraduationCap, Utensils, RotateCcw,
+  Zap, Clock, Phone
 } from "lucide-react";
+import RegistrationPopupModal from "@/components/RegistrationPopupModal";
 
 const ALL_REGISTRATION_DEPARTMENTS = ["CSE", "ECE", "CSE-CS", "CSE - AIML", "CSE - DS", "CIVIL", "MECH", "EEE", "IT"];
 const ALL_REGISTRATION_YEARS = [
@@ -137,6 +139,12 @@ function AdminDashboardContent() {
   const [closedTextDraft, setClosedTextDraft] = useState<string>("");
   const [maintBannerDraft, setMaintBannerDraft] = useState<boolean>(false);
   const [maintTextDraft, setMaintTextDraft] = useState<string>("");
+  const [popupEnabledDraft, setPopupEnabledDraft] = useState<boolean>(false);
+  const [popupTitleDraft, setPopupTitleDraft] = useState<string>("Hurry up! Registrations closing soon!");
+  const [popupClosingTimeDraft, setPopupClosingTimeDraft] = useState<string>("");
+  const [popupMessageDraft, setPopupMessageDraft] = useState<string>("Online registrations will close on the specified date & time. Register online now before passes are sold out!");
+  const [offlineContactDraft, setOfflineContactDraft] = useState<string>("");
+  const [showPopupPreview, setShowPopupPreview] = useState<boolean>(false);
   const [savingBannerSettings, setSavingBannerSettings] = useState<boolean>(false);
 
   // Student Directory state
@@ -219,6 +227,11 @@ function AdminDashboardContent() {
       setClosedTextDraft(data.registrations_closed_text);
       setMaintBannerDraft(data.maintenance_mode);
       setMaintTextDraft(data.maintenance_mode_text);
+      setPopupEnabledDraft(data.popup_enabled ?? false);
+      setPopupTitleDraft(data.popup_title || "Hurry up! Registrations closing soon!");
+      setPopupClosingTimeDraft(data.popup_closing_time || "");
+      setPopupMessageDraft(data.popup_message || "Online registrations will close on the specified date & time. Register online now before passes are sold out!");
+      setOfflineContactDraft(data.offline_contact_details || "");
     } catch {
       // silent
     }
@@ -227,13 +240,20 @@ function AdminDashboardContent() {
   const handleSaveBannerSettings = async (overrides?: {
     registrations_closed?: boolean;
     maintenance_mode?: boolean;
+    popup_enabled?: boolean;
   }) => {
     setSavingBannerSettings(true);
     try {
       const nextClosed = overrides?.registrations_closed !== undefined ? overrides.registrations_closed : closedBannerDraft;
+      const nextPopup = overrides?.popup_enabled !== undefined ? overrides.popup_enabled : popupEnabledDraft;
       const payload: Partial<BannerSettings> = {
         registrations_closed: nextClosed,
         registrations_closed_text: closedTextDraft,
+        popup_enabled: nextPopup,
+        popup_title: popupTitleDraft,
+        popup_closing_time: popupClosingTimeDraft,
+        popup_message: popupMessageDraft,
+        offline_contact_details: offlineContactDraft,
       };
       if (isSuperAdmin) {
         const nextMaint = overrides?.maintenance_mode !== undefined ? overrides.maintenance_mode : maintBannerDraft;
@@ -246,6 +266,11 @@ function AdminDashboardContent() {
       setClosedTextDraft(res.settings.registrations_closed_text);
       setMaintBannerDraft(res.settings.maintenance_mode);
       setMaintTextDraft(res.settings.maintenance_mode_text);
+      setPopupEnabledDraft(res.settings.popup_enabled);
+      setPopupTitleDraft(res.settings.popup_title);
+      setPopupClosingTimeDraft(res.settings.popup_closing_time);
+      setPopupMessageDraft(res.settings.popup_message);
+      setOfflineContactDraft(res.settings.offline_contact_details);
       setStatusMsg(`✅ ${res.message}`);
     } catch (err: unknown) {
       setStatusMsg(`❌ ${errorMessage(err, "Failed updating announcement banner settings.")}`);
@@ -1440,8 +1465,186 @@ function AdminDashboardContent() {
                     </div>
                   )}
                 </div>
+
+                {/* 3. Registration Urgency Pop-up Window Feature (Super Admin Control) */}
+                <div className={`col-span-full rounded-2xl border p-5 md:p-6 space-y-4 ${
+                  isSuperAdmin
+                    ? "border-amber-400/40 bg-gradient-to-br from-[#1d1607] via-[#141006] to-[#0c0903]"
+                    : "border-slate-800 bg-slate-900/60 opacity-60"
+                }`}>
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-500/20 pb-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/20 border border-amber-400/40 text-amber-300">
+                        <Zap className="h-4 w-4 fill-amber-300" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-sm font-extrabold text-amber-200 uppercase tracking-wide">
+                            Registration Urgency Pop-up Window Feature
+                          </h4>
+                          <span className="inline-flex items-center gap-1 rounded bg-amber-400/15 border border-amber-400/30 px-2 py-0.5 text-[9px] font-bold text-amber-300">
+                            <Lock className="h-2.5 w-2.5" /> Super Admin Control
+                          </span>
+                        </div>
+                        <p className="text-xs text-amber-100/70">
+                          Controls the bold modal window shown to students on the Registrations (&ldquo;What&rsquo;s On&rdquo;) page with closing deadline and countdown.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <label htmlFor="toggle-popup-banner" className={`relative inline-flex items-center ${isSuperAdmin ? "cursor-pointer" : "cursor-not-allowed"}`}>
+                        <input
+                          id="toggle-popup-banner"
+                          type="checkbox"
+                          checked={popupEnabledDraft}
+                          disabled={!isSuperAdmin || savingBannerSettings}
+                          onChange={(e) => {
+                            if (!isSuperAdmin) return;
+                            const checked = e.target.checked;
+                            setPopupEnabledDraft(checked);
+                            void handleSaveBannerSettings({ popup_enabled: checked });
+                          }}
+                          className="sr-only peer"
+                        />
+                        <div className="h-6 w-11 rounded-full bg-slate-700 peer-checked:bg-amber-500 peer-focus:outline-none transition-colors after:absolute after:top-[2px] after:left-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all peer-checked:after:translate-x-full" />
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs pt-1">
+                    <span className="text-slate-400 font-medium">Public Pop-up Window Status:</span>
+                    <span className={`px-2.5 py-0.5 rounded-full font-bold text-[10px] border ${
+                      popupEnabledDraft
+                        ? "bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse"
+                        : "bg-slate-800 text-slate-400 border-slate-700"
+                    }`}>
+                      {popupEnabledDraft ? "POP-UP WINDOW ACTIVE (WHAT'S ON PAGE)" : "POP-UP WINDOW DISABLED"}
+                    </span>
+                  </div>
+
+                  {/* Form Inputs Grid */}
+                  <div className="grid gap-4 md:grid-cols-2 pt-1">
+                    {/* Closing Deadline Date/Time */}
+                    <div className="space-y-1.5">
+                      <label htmlFor="popup-closing-time" className="text-xs font-semibold text-amber-100 flex items-center gap-1.5">
+                        <Clock className="h-3.5 w-3.5 text-amber-400" />
+                        Super Admin Specified Closing Date & Time:
+                      </label>
+                      <input
+                        id="popup-closing-time"
+                        type="datetime-local"
+                        disabled={!isSuperAdmin}
+                        value={popupClosingTimeDraft}
+                        onChange={(e) => setPopupClosingTimeDraft(e.target.value)}
+                        className="w-full rounded-lg border border-amber-500/30 bg-black/50 px-3 py-2 text-xs text-amber-100 focus:border-amber-400 focus:outline-none"
+                      />
+                      <p className="text-[10px] text-amber-300/70">
+                        {popupClosingTimeDraft ? (
+                          <>Displays as: <strong>{new Date(popupClosingTimeDraft).toLocaleString("en-IN", { dateStyle: "full", timeStyle: "short" })} IST</strong></>
+                        ) : (
+                          "Enter the exact deadline date & time for registrations."
+                        )}
+                      </p>
+                    </div>
+
+                    {/* Pop-up Title */}
+                    <div className="space-y-1.5">
+                      <label htmlFor="popup-title" className="text-xs font-semibold text-amber-100 flex items-center gap-1.5">
+                        <Zap className="h-3.5 w-3.5 text-amber-400" />
+                        Pop-up Bold Headline:
+                      </label>
+                      <input
+                        id="popup-title"
+                        type="text"
+                        disabled={!isSuperAdmin}
+                        value={popupTitleDraft}
+                        onChange={(e) => setPopupTitleDraft(e.target.value)}
+                        placeholder="Hurry up! Registrations closing soon!"
+                        className="w-full rounded-lg border border-amber-500/30 bg-black/50 px-3 py-2 text-xs text-amber-100 placeholder-amber-300/40 focus:border-amber-400 focus:outline-none"
+                      />
+                      <p className="text-[10px] text-slate-400">
+                        Main high-visibility headline displayed at the top of the pop-up modal.
+                      </p>
+                    </div>
+
+                    {/* Pop-up Message */}
+                    <div className="space-y-1.5">
+                      <label htmlFor="popup-msg" className="text-xs font-semibold text-amber-100">
+                        Pop-up Urgency Description:
+                      </label>
+                      <textarea
+                        id="popup-msg"
+                        rows={2}
+                        disabled={!isSuperAdmin}
+                        value={popupMessageDraft}
+                        onChange={(e) => setPopupMessageDraft(e.target.value)}
+                        placeholder="Online registrations will close on the specified date & time. Register online now before passes are sold out!"
+                        className="w-full rounded-lg border border-amber-500/30 bg-black/50 px-3 py-2 text-xs text-amber-100 placeholder-amber-300/40 focus:border-amber-400 focus:outline-none"
+                      />
+                    </div>
+
+                    {/* Offline Contact Details */}
+                    <div className="space-y-1.5">
+                      <label htmlFor="offline-contacts" className="text-xs font-semibold text-amber-100 flex items-center gap-1.5">
+                        <Phone className="h-3.5 w-3.5 text-amber-400" />
+                        Offline Registration Helpdesk Details (Shown When Closed):
+                      </label>
+                      <textarea
+                        id="offline-contacts"
+                        rows={2}
+                        disabled={!isSuperAdmin}
+                        value={offlineContactDraft}
+                        onChange={(e) => setOfflineContactDraft(e.target.value)}
+                        placeholder="Contact organizing team for offline registrations: Sai Harsha (8179645560) | Rahul (9876543210) | SPHN Registration Desk @ Main Campus"
+                        className="w-full rounded-lg border border-amber-500/30 bg-black/50 px-3 py-2 text-xs text-amber-100 placeholder-amber-300/40 focus:border-amber-400 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Card Action Buttons */}
+                  {isSuperAdmin && (
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-amber-500/20 pt-3">
+                      <button
+                        type="button"
+                        onClick={() => setShowPopupPreview(true)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-amber-400/40 bg-amber-400/10 hover:bg-amber-400/20 px-3.5 py-1.5 text-xs font-bold text-amber-200 transition"
+                      >
+                        <Zap className="h-3.5 w-3.5 text-amber-300" />
+                        <span>Preview Pop-up Window</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleSaveBannerSettings()}
+                        disabled={savingBannerSettings}
+                        className="button-primary !min-h-[34px] !px-4 !text-xs !bg-gradient-to-r !from-amber-500 !to-yellow-500 hover:!from-amber-400 hover:!to-yellow-400 text-black font-extrabold uppercase tracking-wider"
+                      >
+                        {savingBannerSettings ? "Saving Settings..." : "Save Pop-up & Deadline Settings"}
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
+          )}
+
+          {/* Pop-up Window Preview in Admin Dashboard */}
+          {showPopupPreview && (
+            <RegistrationPopupModal
+              banners={{
+                registrations_closed: false,
+                registrations_closed_text: closedTextDraft,
+                maintenance_mode: false,
+                maintenance_mode_text: maintTextDraft,
+                popup_enabled: true,
+                popup_title: popupTitleDraft,
+                popup_closing_time: popupClosingTimeDraft,
+                popup_message: popupMessageDraft,
+                offline_contact_details: offlineContactDraft,
+              }}
+              onBookClick={() => setShowPopupPreview(false)}
+            />
           )}
 
           {/* GST & Convenience Fee Settings Panel (SUPER ADMIN ONLY) */}

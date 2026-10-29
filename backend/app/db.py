@@ -85,6 +85,22 @@ class DatabaseManager:
                             VALUES ('banner_maintenance_mode_text', 'Website is Under Maintenance. This maintenance is to ensure your seamless experience and proper security. The website will be live within 10-15 minutes.', NOW()::text)
                             ON CONFLICT(key) DO NOTHING;
 
+                            INSERT INTO system_settings (key, value, updated_at)
+                            VALUES ('popup_enabled', 'false', NOW()::text)
+                            ON CONFLICT(key) DO NOTHING;
+                            INSERT INTO system_settings (key, value, updated_at)
+                            VALUES ('popup_title', 'Hurry up! Registrations closing soon!', NOW()::text)
+                            ON CONFLICT(key) DO NOTHING;
+                            INSERT INTO system_settings (key, value, updated_at)
+                            VALUES ('popup_closing_time', '', NOW()::text)
+                            ON CONFLICT(key) DO NOTHING;
+                            INSERT INTO system_settings (key, value, updated_at)
+                            VALUES ('popup_message', 'Registrations will close on the specified date & time. Register online now before slots are fully filled!', NOW()::text)
+                            ON CONFLICT(key) DO NOTHING;
+                            INSERT INTO system_settings (key, value, updated_at)
+                            VALUES ('offline_contact_details', 'For offline registrations, contact organizing team: Sai Harsha (8179645560) | Rahul (9876543210) | SPHN Registration Desk @ Main Campus', NOW()::text)
+                            ON CONFLICT(key) DO NOTHING;
+
                             CREATE TABLE IF NOT EXISTS daily_settlements (
                                 id TEXT PRIMARY KEY,
                                 event_id TEXT,
@@ -527,6 +543,36 @@ class DatabaseManager:
         self.execute_write(
             """INSERT INTO system_settings (key, value, updated_at)
                VALUES ('banner_maintenance_mode_text', 'Website is Under Maintenance. This maintenance is to ensure your seamless experience and proper security. The website will be live within 10-15 minutes.', ?)
+               ON CONFLICT(key) DO NOTHING""",
+            (now_iso,)
+        )
+        self.execute_write(
+            """INSERT INTO system_settings (key, value, updated_at)
+               VALUES ('popup_enabled', 'false', ?)
+               ON CONFLICT(key) DO NOTHING""",
+            (now_iso,)
+        )
+        self.execute_write(
+            """INSERT INTO system_settings (key, value, updated_at)
+               VALUES ('popup_title', 'Hurry up! Registrations closing soon!', ?)
+               ON CONFLICT(key) DO NOTHING""",
+            (now_iso,)
+        )
+        self.execute_write(
+            """INSERT INTO system_settings (key, value, updated_at)
+               VALUES ('popup_closing_time', '', ?)
+               ON CONFLICT(key) DO NOTHING""",
+            (now_iso,)
+        )
+        self.execute_write(
+            """INSERT INTO system_settings (key, value, updated_at)
+               VALUES ('popup_message', 'Registrations will close on the specified date & time. Register online now before slots are fully filled!', ?)
+               ON CONFLICT(key) DO NOTHING""",
+            (now_iso,)
+        )
+        self.execute_write(
+            """INSERT INTO system_settings (key, value, updated_at)
+               VALUES ('offline_contact_details', 'For offline registrations, contact organizing team: Sai Harsha (8179645560) | Rahul (9876543210) | SPHN Registration Desk @ Main Campus', ?)
                ON CONFLICT(key) DO NOTHING""",
             (now_iso,)
         )

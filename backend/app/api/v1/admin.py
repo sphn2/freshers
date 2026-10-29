@@ -736,6 +736,11 @@ def manage_banner_settings():
             registrations_closed_text = body.get("registrations_closed_text")
             maintenance_mode = body.get("maintenance_mode")
             maintenance_mode_text = body.get("maintenance_mode_text")
+            popup_enabled = body.get("popup_enabled")
+            popup_title = body.get("popup_title")
+            popup_closing_time = body.get("popup_closing_time")
+            popup_message = body.get("popup_message")
+            offline_contact_details = body.get("offline_contact_details")
             roles = getattr(g, "user_roles", [])
 
             updated = system_settings_service.update_banner_settings(
@@ -743,6 +748,11 @@ def manage_banner_settings():
                 registrations_closed_text=registrations_closed_text if isinstance(registrations_closed_text, str) else None,
                 maintenance_mode=maintenance_mode if isinstance(maintenance_mode, bool) else None,
                 maintenance_mode_text=maintenance_mode_text if isinstance(maintenance_mode_text, str) else None,
+                popup_enabled=popup_enabled if isinstance(popup_enabled, bool) else None,
+                popup_title=popup_title if isinstance(popup_title, str) else None,
+                popup_closing_time=popup_closing_time if isinstance(popup_closing_time, str) else None,
+                popup_message=popup_message if isinstance(popup_message, str) else None,
+                offline_contact_details=offline_contact_details if isinstance(offline_contact_details, str) else None,
                 roles=roles,
             )
             return jsonify({

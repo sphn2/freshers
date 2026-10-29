@@ -135,24 +135,45 @@ class SystemSettingsService:
 
     @staticmethod
     def get_banner_settings() -> dict:
-        default_closed_text = "Registrations are closed. For more details or spot registrations, contact the Freshers Organizing Team."
+        default_closed_text = "Online registrations are completely closed. No more registrations will be accepted online."
         default_maint_text = "Website is Under Maintenance. This maintenance is to ensure your seamless experience and proper security. The website will be live within 10-15 minutes."
+        default_popup_title = "Hurry up! Registrations closing soon!"
+        default_popup_message = "Online registrations will close on the specified date & time. Register online now before passes are sold out!"
+        default_offline_contacts = "Contact organizing team for offline registrations: Sai Harsha (8179645560) | Rahul (9876543210) | SPHN Registration Desk @ Main Campus"
+
         try:
             closed_row = db.execute_one("SELECT value FROM system_settings WHERE key = 'banner_registrations_closed'")
             closed_text_row = db.execute_one("SELECT value FROM system_settings WHERE key = 'banner_registrations_closed_text'")
             maint_row = db.execute_one("SELECT value FROM system_settings WHERE key = 'banner_maintenance_mode'")
             maint_text_row = db.execute_one("SELECT value FROM system_settings WHERE key = 'banner_maintenance_mode_text'")
 
+            popup_enabled_row = db.execute_one("SELECT value FROM system_settings WHERE key = 'popup_enabled'")
+            popup_title_row = db.execute_one("SELECT value FROM system_settings WHERE key = 'popup_title'")
+            popup_closing_row = db.execute_one("SELECT value FROM system_settings WHERE key = 'popup_closing_time'")
+            popup_msg_row = db.execute_one("SELECT value FROM system_settings WHERE key = 'popup_message'")
+            offline_contact_row = db.execute_one("SELECT value FROM system_settings WHERE key = 'offline_contact_details'")
+
             registrations_closed = (closed_row["value"].lower() == "true") if closed_row and closed_row.get("value") else False
             registrations_closed_text = closed_text_row["value"] if closed_text_row and closed_text_row.get("value") else default_closed_text
             maintenance_mode = (maint_row["value"].lower() == "true") if maint_row and maint_row.get("value") else False
             maintenance_mode_text = maint_text_row["value"] if maint_text_row and maint_text_row.get("value") else default_maint_text
+
+            popup_enabled = (popup_enabled_row["value"].lower() == "true") if popup_enabled_row and popup_enabled_row.get("value") else False
+            popup_title = popup_title_row["value"] if popup_title_row and popup_title_row.get("value") else default_popup_title
+            popup_closing_time = popup_closing_row["value"] if popup_closing_row and popup_closing_row.get("value") else ""
+            popup_message = popup_msg_row["value"] if popup_msg_row and popup_msg_row.get("value") else default_popup_message
+            offline_contact_details = offline_contact_row["value"] if offline_contact_row and offline_contact_row.get("value") else default_offline_contacts
 
             return {
                 "registrations_closed": registrations_closed,
                 "registrations_closed_text": registrations_closed_text,
                 "maintenance_mode": maintenance_mode,
                 "maintenance_mode_text": maintenance_mode_text,
+                "popup_enabled": popup_enabled,
+                "popup_title": popup_title,
+                "popup_closing_time": popup_closing_time,
+                "popup_message": popup_message,
+                "offline_contact_details": offline_contact_details,
             }
         except Exception:
             return {
@@ -160,6 +181,11 @@ class SystemSettingsService:
                 "registrations_closed_text": default_closed_text,
                 "maintenance_mode": False,
                 "maintenance_mode_text": default_maint_text,
+                "popup_enabled": False,
+                "popup_title": default_popup_title,
+                "popup_closing_time": "",
+                "popup_message": default_popup_message,
+                "offline_contact_details": default_offline_contacts,
             }
 
     @staticmethod
@@ -169,6 +195,11 @@ class SystemSettingsService:
         maintenance_mode: bool | None,
         maintenance_mode_text: str | None,
         roles: list[str],
+        popup_enabled: bool | None = None,
+        popup_title: str | None = None,
+        popup_closing_time: str | None = None,
+        popup_message: str | None = None,
+        offline_contact_details: str | None = None,
     ) -> dict:
         is_super = "SUPER_ADMIN" in roles
         is_admin = is_super or "ADMIN" in roles
@@ -214,6 +245,46 @@ class SystemSettingsService:
                    VALUES ('banner_maintenance_mode_text', %s, %s)
                    ON CONFLICT(key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at""",
                 (clean_maint_text, now)
+            )
+
+        if popup_enabled is not None:
+            db.execute_write(
+                """INSERT INTO system_settings (key, value, updated_at)
+                   VALUES ('popup_enabled', %s, %s)
+                   ON CONFLICT(key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at""",
+                ("true" if popup_enabled else "false", now)
+            )
+
+        if popup_title is not None:
+            db.execute_write(
+                """INSERT INTO system_settings (key, value, updated_at)
+                   VALUES ('popup_title', %s, %s)
+                   ON CONFLICT(key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at""",
+                (popup_title.strip(), now)
+            )
+
+        if popup_closing_time is not None:
+            db.execute_write(
+                """INSERT INTO system_settings (key, value, updated_at)
+                   VALUES ('popup_closing_time', %s, %s)
+                   ON CONFLICT(key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at""",
+                (popup_closing_time.strip(), now)
+            )
+
+        if popup_message is not None:
+            db.execute_write(
+                """INSERT INTO system_settings (key, value, updated_at)
+                   VALUES ('popup_message', %s, %s)
+                   ON CONFLICT(key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at""",
+                (popup_message.strip(), now)
+            )
+
+        if offline_contact_details is not None:
+            db.execute_write(
+                """INSERT INTO system_settings (key, value, updated_at)
+                   VALUES ('offline_contact_details', %s, %s)
+                   ON CONFLICT(key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at""",
+                (offline_contact_details.strip(), now)
             )
 
         return SystemSettingsService.get_banner_settings()

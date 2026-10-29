@@ -374,4 +374,9 @@ export interface BannerSettings {
   registrations_closed_text: string;
   maintenance_mode: boolean;
   maintenance_mode_text: string;
+  popup_enabled: boolean;
+  popup_title: string;
+  popup_closing_time: string;
+  popup_message: string;
+  offline_contact_details: string;
 }
