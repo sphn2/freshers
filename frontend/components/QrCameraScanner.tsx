@@ -64,12 +64,14 @@ export function QrCameraScanner({
         });
         scannerRef.current = scanner;
         await scanner.start(
-          { facingMode: "environment" },
           {
-            fps: 25,
+            facingMode: { ideal: "environment" },
+          },
+          {
+            fps: 15,
             qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
               const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-              const qrboxSize = Math.max(220, Math.floor(minEdge * 0.85));
+              const qrboxSize = Math.max(260, Math.floor(minEdge * 0.92));
               return { width: qrboxSize, height: qrboxSize };
             },
             aspectRatio: 1.0,
@@ -78,7 +80,9 @@ export function QrCameraScanner({
             if (!mounted) return;
             if (!scanEnabledRef.current) return;
             const now = Date.now();
-            if (decodedText === lastDecodedRef.current && now - lastDecodedTimeRef.current < 2500) {
+            // If the same QR code is repeatedly held in front of the lens, debounce for 1.8s.
+            // If a different QR code appears (next student), process immediately!
+            if (decodedText === lastDecodedRef.current && now - lastDecodedTimeRef.current < 1800) {
               return;
             }
             lastDecodedRef.current = decodedText;
@@ -86,7 +90,7 @@ export function QrCameraScanner({
             onScanRef.current(decodedText);
           },
           () => {
-            // Scanner scanning frame callback - do not clear lastDecodedRef automatically
+            // Scanner scanning frame callback
           },
         );
         started = true;

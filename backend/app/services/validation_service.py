@@ -32,12 +32,20 @@ def _clean_uuid(user_id: str | None) -> str | None:
 
 def _ticket_lookup(req, lock: bool = False):
     if req.qr_token:
-        payload = verify_signed_qr_token(req.qr_token)
-        lookups = (
-            [("t.id", payload["tid"]), ("t.qr_token", req.qr_token)]
-            if payload and payload.get("tid")
-            else [("t.qr_token", req.qr_token)]
-        )
+        raw = req.qr_token.strip()
+        token = raw
+        if "token=" in raw:
+            token = raw.split("token=")[-1].split("&")[0].split("#")[0]
+        elif "/tickets/" in raw:
+            token = raw.split("/tickets/")[-1].split("?")[0].split("/")[0]
+
+        payload = verify_signed_qr_token(token)
+        lookups = []
+        if payload and payload.get("tid"):
+            lookups.append(("t.id", payload["tid"]))
+        lookups.append(("t.qr_token", token))
+        if token != raw:
+            lookups.append(("t.qr_token", raw))
     else:
         lookups = [("t.ticket_code", req.ticket_code.strip())]
 

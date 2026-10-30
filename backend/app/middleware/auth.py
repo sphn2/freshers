@@ -1,8 +1,40 @@
+import hashlib
+import time
+import threading
 import jwt
 from functools import lru_cache, wraps
 from flask import request, jsonify, g, current_app
 from app.config import config
 from app.db import db
+
+_AUTH_CACHE = {}
+_AUTH_CACHE_LOCK = threading.Lock()
+
+
+def _get_cached_auth(token: str):
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    now = time.time()
+    with _AUTH_CACHE_LOCK:
+        cached = _AUTH_CACHE.get(token_hash)
+        if cached and cached["exp"] > now:
+            return cached["user"], cached["roles"]
+        if cached:
+            del _AUTH_CACHE[token_hash]
+    return None, None
+
+
+def _set_cached_auth(token: str, user: dict, roles: list, exp: float):
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    now = time.time()
+    ttl_exp = min(exp, now + 120.0)
+    with _AUTH_CACHE_LOCK:
+        if len(_AUTH_CACHE) > 500:
+            _AUTH_CACHE.clear()
+        _AUTH_CACHE[token_hash] = {
+            "user": user,
+            "roles": roles,
+            "exp": ttl_exp,
+        }
 
 
 def parse_auth_header():
@@ -132,6 +164,12 @@ def auth_middleware():
     if token.startswith("test-token-") and _set_test_identity(token):
         return
 
+    cached_user, cached_roles = _get_cached_auth(token)
+    if cached_user and cached_roles is not None:
+        g.current_user = cached_user
+        g.user_roles = cached_roles
+        return
+
     try:
         payload = _decode_supabase_token(token)
     except (jwt.PyJWTError, ValueError) as exc:
@@ -158,6 +196,9 @@ def auth_middleware():
     if "SUPER_ADMIN" in user_roles_list and "ADMIN" not in user_roles_list:
         user_roles_list.append("ADMIN")
     g.user_roles = user_roles_list
+
+    exp = float(payload.get("exp", time.time() + 120))
+    _set_cached_auth(token, g.current_user, g.user_roles, exp)
 
 
 def require_auth(f):

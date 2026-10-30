@@ -33,7 +33,20 @@ class DatabaseManager:
             if not self.conn_str:
                 raise RuntimeError("DATABASE_URL is required when SQLite is disabled.")
             try:
-                conn = psycopg2.connect(self.conn_str, connect_timeout=10)
+                from psycopg2 import pool
+                try:
+                    self._pool = pool.ThreadedConnectionPool(
+                        minconn=2,
+                        maxconn=25,
+                        dsn=self.conn_str,
+                        connect_timeout=10,
+                    )
+                except Exception as pool_err:
+                    import logging
+                    logging.warning("Connection pool initialization fallback: %s", pool_err)
+                    self._pool = None
+
+                conn = self._get_pg_conn()
                 try:
                     with conn.cursor() as cur:
                         cur.execute("""
@@ -132,13 +145,21 @@ class DatabaseManager:
                                 ON tickets (registration_id, created_at);
                             CREATE INDEX IF NOT EXISTS idx_registrations_event_status
                                 ON registrations (event_id, status, created_at);
+                            CREATE INDEX IF NOT EXISTS idx_tickets_qr_token
+                                ON tickets (qr_token);
+                            CREATE INDEX IF NOT EXISTS idx_tickets_code_event
+                                ON tickets (ticket_code, event_id);
+                            CREATE INDEX IF NOT EXISTS idx_tickets_event_status
+                                ON tickets (event_id, status);
+                            CREATE INDEX IF NOT EXISTS idx_food_entitlements_ticket
+                                ON food_entitlements (ticket_id);
                         """)
                         conn.commit()
                 except Exception as ddl_err:
                     import logging
                     logging.warning("Non-fatal bootstrap DDL notice: %s", ddl_err)
                 finally:
-                    conn.close()
+                    self._put_pg_conn(conn)
                 return
             except psycopg2.Error as exc:
                 import logging
@@ -403,6 +424,14 @@ class DatabaseManager:
                 ON tickets (registration_id, created_at);
             CREATE INDEX IF NOT EXISTS idx_registrations_event_status
                 ON registrations (event_id, status, created_at);
+            CREATE INDEX IF NOT EXISTS idx_tickets_qr_token
+                ON tickets (qr_token);
+            CREATE INDEX IF NOT EXISTS idx_tickets_code_event
+                ON tickets (ticket_code, event_id);
+            CREATE INDEX IF NOT EXISTS idx_tickets_event_status
+                ON tickets (event_id, status);
+            CREATE INDEX IF NOT EXISTS idx_food_entitlements_ticket
+                ON food_entitlements (ticket_id);
         """)
         additive_columns = {
             "profiles": {
@@ -591,6 +620,35 @@ class DatabaseManager:
                     (str(uuid.uuid4()), roll, name, email, phone, dept, datetime.now(timezone.utc).isoformat())
                 )
 
+    def _get_pg_conn(self):
+        pool = getattr(self, "_pool", None)
+        if pool is None:
+            return psycopg2.connect(self.conn_str, connect_timeout=10)
+        try:
+            conn = pool.getconn()
+            if conn.closed:
+                pool.putconn(conn, close=True)
+                conn = pool.getconn()
+            return conn
+        except Exception:
+            return psycopg2.connect(self.conn_str, connect_timeout=10)
+
+    def _put_pg_conn(self, conn, close=False):
+        pool = getattr(self, "_pool", None)
+        if pool is None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+            return
+        try:
+            pool.putconn(conn, close=close)
+        except Exception:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
     @contextmanager
     def transaction(self):
         """Run related database operations on one connection and commit them together."""
@@ -608,7 +666,7 @@ class DatabaseManager:
                 self._lock.release()
                 raise
         else:
-            connection = psycopg2.connect(self.conn_str, connect_timeout=10)
+            connection = self._get_pg_conn()
 
         self._transaction_local.connection = connection
         try:
@@ -620,7 +678,7 @@ class DatabaseManager:
         finally:
             del self._transaction_local.connection
             if not self.is_sqlite:
-                connection.close()
+                self._put_pg_conn(connection)
             else:
                 self._lock.release()
 
@@ -674,14 +732,14 @@ class DatabaseManager:
                     cursor.close()
         else:
             q = query.replace("?", "%s")
-            conn = psycopg2.connect(self.conn_str, connect_timeout=10)
+            conn = self._get_pg_conn()
             try:
                 with conn.cursor(cursor_factory=RealDictCursor) as cursor:
                     cursor.execute(q, params)
                     rows = cursor.fetchall()
                     return [dict(r) for r in rows]
             finally:
-                conn.close()
+                self._put_pg_conn(conn)
 
     def execute_one(self, query: str, params: tuple = ()):
         rows = self.execute_query(query, params)
@@ -718,7 +776,7 @@ class DatabaseManager:
                     cursor.close()
         else:
             q = query.replace("?", "%s")
-            conn = psycopg2.connect(self.conn_str, connect_timeout=10)
+            conn = self._get_pg_conn()
             try:
                 with conn.cursor(cursor_factory=RealDictCursor) as cursor:
                     cursor.execute(q, params)
@@ -728,7 +786,7 @@ class DatabaseManager:
                         return [dict(r) for r in rows]
                     return cursor.rowcount
             finally:
-                conn.close()
+                self._put_pg_conn(conn)
 
     def execute_atomic_update(self, update_query: str, params: tuple):
         """
@@ -767,7 +825,7 @@ class DatabaseManager:
                     cursor.close()
         else:
             q = update_query.replace("?", "%s")
-            conn = psycopg2.connect(self.conn_str, connect_timeout=10)
+            conn = self._get_pg_conn()
             try:
                 with conn.cursor(cursor_factory=RealDictCursor) as cursor:
                     cursor.execute(q, params)
@@ -775,7 +833,7 @@ class DatabaseManager:
                     rows = cursor.fetchall()
                     return dict(rows[0]) if rows else None
             finally:
-                conn.close()
+                self._put_pg_conn(conn)
 
 
 db = DatabaseManager()

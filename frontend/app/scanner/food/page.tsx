@@ -1,12 +1,23 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { api } from "@/lib/api";
 import { ProtectedRoute, useAuth } from "@/lib/auth";
 import { errorMessage } from "@/lib/types";
 import type { Event, ValidationResult } from "@/lib/types";
-import { Utensils, CheckCircle2, XCircle, AlertTriangle, RefreshCw } from "lucide-react";
+import {
+  Utensils,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  RefreshCw,
+  Volume2,
+  VolumeX,
+  Zap,
+  RotateCcw,
+} from "lucide-react";
 import { QrCameraScanner } from "@/components/QrCameraScanner";
+import { playFeedbackSound } from "@/lib/sound";
 
 export default function FoodScannerPage() {
   return (
@@ -28,12 +39,22 @@ function FoodScannerContent() {
   const [result, setResult] = useState<ValidationResult | null>(null);
   const [requestError, setRequestError] = useState<string | null>(null);
 
+  // Flash Validation Options
+  const [autoAdvance, setAutoAdvance] = useState<boolean>(true);
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+  const [sessionClaimed, setSessionClaimed] = useState<number>(0);
+  const [lastLatencyMs, setLastLatencyMs] = useState<number | null>(null);
+
+  const autoAdvanceTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Cleanup auto-advance timer on unmount
   useEffect(() => {
-    if (!result) return;
-    if (typeof navigator.vibrate === "function") {
-      navigator.vibrate(result.status === "VALID" ? [90, 45, 90] : [220]);
-    }
-  }, [result]);
+    return () => {
+      if (autoAdvanceTimerRef.current) {
+        clearTimeout(autoAdvanceTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     async function loadEvents() {
@@ -64,6 +85,7 @@ function FoodScannerContent() {
   };
 
   const handleClear = () => {
+    if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
     setInputCode("");
     setResult(null);
     setRequestError(null);
@@ -79,8 +101,15 @@ function FoodScannerContent() {
       setResult({ status: "INVALID_TICKET", message: "No food-enabled events are available." });
       return;
     }
+
+    if (autoAdvanceTimerRef.current) {
+      clearTimeout(autoAdvanceTimerRef.current);
+      autoAdvanceTimerRef.current = null;
+    }
+
     setValidating(true);
     setRequestError(null);
+    const startTime = performance.now();
 
     try {
       const res = await api.validateFood({
@@ -89,9 +118,43 @@ function FoodScannerContent() {
         food_location: foodLocation,
       });
 
+      const elapsedMs = Math.round(performance.now() - startTime);
+      setLastLatencyMs(elapsedMs);
       setResult(res);
       setInputCode("");
+
+      // Instant Audio & Haptic Feedback
+      if (res.status === "VALID") {
+        setSessionClaimed((prev) => prev + 1);
+        if (soundEnabled) playFeedbackSound("valid");
+        if (typeof navigator.vibrate === "function") navigator.vibrate([70, 40, 70]);
+
+        if (autoAdvance) {
+          autoAdvanceTimerRef.current = setTimeout(() => {
+            setResult(null);
+          }, 1400);
+        }
+      } else if (res.status === "FOOD_ALREADY_CLAIMED") {
+        if (soundEnabled) playFeedbackSound("already_used");
+        if (typeof navigator.vibrate === "function") navigator.vibrate([240]);
+
+        if (autoAdvance) {
+          autoAdvanceTimerRef.current = setTimeout(() => {
+            setResult(null);
+          }, 3200);
+        }
+      } else {
+        if (soundEnabled) playFeedbackSound("invalid");
+        if (typeof navigator.vibrate === "function") navigator.vibrate([120, 60, 120]);
+
+        if (autoAdvance) {
+          autoAdvanceTimerRef.current = setTimeout(() => {
+            setResult(null);
+          }, 3200);
+        }
+      }
     } catch (err: unknown) {
+      if (soundEnabled) playFeedbackSound("invalid");
       setRequestError(errorMessage(err, "Could not verify the ticket. Check the connection and retry."));
     } finally {
       setInputCode("");
@@ -116,6 +179,7 @@ function FoodScannerContent() {
           Verification could not be completed: {requestError} This does not confirm that the ticket is invalid. Retry when the scanner is connected.
         </div>
       )}
+
       {/* Header & Counter Selection */}
       <div className="page-hero flex flex-col justify-between gap-5 p-5 md:flex-row md:items-end md:p-7">
         <div className="relative z-10">
@@ -128,7 +192,25 @@ function FoodScannerContent() {
               <h1 className="editorial-title mt-1 text-3xl">Counter desk</h1>
             </div>
           </div>
-          <p className="mt-3 text-[11px] text-white/65">Confirm every meal coupon once. One ticket, one serving.</p>
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-white/80">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-500/20 px-3 py-1 font-semibold text-blue-200 border border-blue-400/30">
+              <Zap className="h-3 w-3 text-amber-400" />
+              Claimed: <strong className="text-white text-xs">{sessionClaimed}</strong>
+            </span>
+            <button
+              type="button"
+              onClick={() => setSessionClaimed(0)}
+              title="Reset session claimed counter"
+              className="text-white/60 hover:text-white inline-flex items-center gap-1 text-[10px]"
+            >
+              <RotateCcw className="h-2.5 w-2.5" /> Reset
+            </button>
+            {lastLatencyMs !== null && (
+              <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-white/70">
+                ⚡ {lastLatencyMs}ms
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="relative z-10 grid w-full gap-3 sm:grid-cols-2 md:max-w-md">
@@ -162,12 +244,47 @@ function FoodScannerContent() {
         </div>
       </div>
 
+      {/* Flash Validation Controls Toolbar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-xs">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setAutoAdvance((prev) => !prev)}
+            className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition-all ${
+              autoAdvance
+                ? "bg-amber-100 text-amber-900 border border-amber-300"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+            }`}
+          >
+            <Zap className={`h-3.5 w-3.5 ${autoAdvance ? "text-amber-600 fill-amber-500" : ""}`} />
+            {autoAdvance ? "Flash Auto-Advance ON" : "Manual Advance"}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSoundEnabled((prev) => !prev)}
+            className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition-all ${
+              soundEnabled
+                ? "bg-blue-50 text-blue-700 border border-blue-200"
+                : "bg-slate-100 text-slate-500"
+            }`}
+          >
+            {soundEnabled ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
+            {soundEnabled ? "Sound ON" : "Muted"}
+          </button>
+        </div>
+
+        <p className="text-[11px] text-slate-500">
+          Continuous camera scanning active. Point camera at meal pass for instant validation.
+        </p>
+      </div>
+
       {/* Validation Result Display */}
       {result && (
         <div
           role="status"
           aria-live="assertive"
-          className={`scan-result-flash p-5 rounded-3xl border-2 text-center space-y-2 shadow-sm ${
+          className={`scan-result-flash p-5 rounded-3xl border-2 text-center space-y-2 shadow-lg transition-all animate-in fade-in zoom-in-95 duration-150 ${
             result.status === "VALID"
               ? "bg-blue-600 text-white border-blue-700"
               : result.status === "FOOD_ALREADY_CLAIMED"
@@ -177,11 +294,11 @@ function FoodScannerContent() {
         >
           <div className="flex items-center justify-center gap-2">
             {result.status === "VALID" ? (
-              <CheckCircle2 className="w-8 h-8" />
+              <CheckCircle2 className="w-8 h-8 animate-bounce" />
             ) : result.status === "FOOD_ALREADY_CLAIMED" ? (
-              <AlertTriangle className="w-8 h-8" />
+              <AlertTriangle className="w-8 h-8 animate-pulse" />
             ) : (
-              <XCircle className="w-8 h-8" />
+              <XCircle className="w-8 h-8 animate-pulse" />
             )}
             <h3 className="text-xl font-black tracking-tight uppercase">
               {result.status === "VALID"
@@ -200,21 +317,27 @@ function FoodScannerContent() {
 
           <div className="text-xs font-mono font-semibold opacity-90">
             Ticket: {result.ticket_code || inputCode || (result.status === "INVALID_TICKET" ? "QR scan" : "")} | Counter: {result.food_location || foodLocation}
+            {lastLatencyMs !== null && ` | Flash: ${lastLatencyMs}ms`}
           </div>
 
-          <button
-            onClick={() => {
-              setResult(null);
-              setInputCode("");
-            }}
-            className="w-full py-3.5 bg-black/25 hover:bg-black/40 text-white font-black text-sm rounded-2xl uppercase tracking-wider mt-3 shadow-md border border-white/20 transition-all cursor-pointer"
-          >
-            ⚡ SCAN NEXT STUDENT
-          </button>
+          <div className="flex items-center justify-center gap-3 pt-2">
+            <button
+              onClick={() => {
+                if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
+                setResult(null);
+                setInputCode("");
+              }}
+              className="w-full max-w-sm py-2.5 bg-black/25 hover:bg-black/40 text-white font-black text-xs rounded-xl uppercase tracking-wider shadow-sm border border-white/20 transition-all cursor-pointer"
+            >
+              {autoAdvance && result.status === "VALID"
+                ? "⚡ Auto-advancing (or tap to clear)"
+                : "⚡ SCAN NEXT STUDENT"}
+            </button>
+          </div>
         </div>
       )}
 
-      {/* Keypad Scanner */}
+      {/* Keypad & Continuous Camera Scanner */}
       <div className="panel grid min-w-0 grid-cols-1 gap-6 p-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:gap-8 md:p-7">
         <div className="min-w-0 md:col-span-2">
           <QrCameraScanner
@@ -223,11 +346,13 @@ function FoodScannerContent() {
             resetTrigger={result ? (result.ticket_code || result.status) : undefined}
           />
           {validating && (
-            <p role="status" className="mt-3 bg-blue-50 px-3 py-2 text-center text-xs font-bold text-blue-800">
-              Checking food coupon…
-            </p>
+            <div role="status" className="mt-3 flex items-center justify-center gap-2 bg-blue-50 py-2.5 px-3 rounded-xl border border-blue-200 text-xs font-bold text-blue-800">
+              <RefreshCw className="h-4 w-4 animate-spin text-blue-600" />
+              <span>Verifying meal coupon instantly…</span>
+            </div>
           )}
         </div>
+
         <div className="min-w-0">
           <p className="eyebrow">Manual verification</p>
           <h2 className="editorial-title mt-2 text-2xl">Read the pass code</h2>
@@ -252,6 +377,7 @@ function FoodScannerContent() {
             </div>
           </div>
         </div>
+
         <div className="grid grid-cols-3 gap-2.5 self-end">
           {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((num) => (
             <button
