@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
 import { ProtectedRoute, useAuth } from "@/lib/auth";
 import { errorMessage } from "@/lib/types";
@@ -15,6 +15,8 @@ import {
   VolumeX,
   Zap,
   RotateCcw,
+  ShieldCheck,
+  X,
 } from "lucide-react";
 import { QrCameraScanner } from "@/components/QrCameraScanner";
 import { playFeedbackSound } from "@/lib/sound";
@@ -39,22 +41,10 @@ function GateScannerContent() {
   const [result, setResult] = useState<ValidationResult | null>(null);
   const [requestError, setRequestError] = useState<string | null>(null);
 
-  // Flash Validation Options
-  const [autoAdvance, setAutoAdvance] = useState<boolean>(true);
+  // Sound and verification metrics
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [sessionAdmitted, setSessionAdmitted] = useState<number>(0);
   const [lastLatencyMs, setLastLatencyMs] = useState<number | null>(null);
-
-  const autoAdvanceTimerRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Cleanup auto-advance timer on unmount
-  useEffect(() => {
-    return () => {
-      if (autoAdvanceTimerRef.current) {
-        clearTimeout(autoAdvanceTimerRef.current);
-      }
-    };
-  }, []);
 
   useEffect(() => {
     async function loadEvents() {
@@ -85,7 +75,6 @@ function GateScannerContent() {
   };
 
   const handleClear = () => {
-    if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
     setInputCode("");
     setResult(null);
     setRequestError(null);
@@ -100,11 +89,6 @@ function GateScannerContent() {
     if (!selectedEventId) {
       setResult({ status: "INVALID_TICKET", message: "No gate-enabled events are available." });
       return;
-    }
-
-    if (autoAdvanceTimerRef.current) {
-      clearTimeout(autoAdvanceTimerRef.current);
-      autoAdvanceTimerRef.current = null;
     }
 
     setValidating(true);
@@ -128,30 +112,12 @@ function GateScannerContent() {
         setSessionAdmitted((prev) => prev + 1);
         if (soundEnabled) playFeedbackSound("valid");
         if (typeof navigator.vibrate === "function") navigator.vibrate([70, 40, 70]);
-
-        if (autoAdvance) {
-          autoAdvanceTimerRef.current = setTimeout(() => {
-            setResult(null);
-          }, 1400);
-        }
       } else if (res.status === "ALREADY_USED") {
         if (soundEnabled) playFeedbackSound("already_used");
         if (typeof navigator.vibrate === "function") navigator.vibrate([240]);
-
-        if (autoAdvance) {
-          autoAdvanceTimerRef.current = setTimeout(() => {
-            setResult(null);
-          }, 3200);
-        }
       } else {
         if (soundEnabled) playFeedbackSound("invalid");
         if (typeof navigator.vibrate === "function") navigator.vibrate([120, 60, 120]);
-
-        if (autoAdvance) {
-          autoAdvanceTimerRef.current = setTimeout(() => {
-            setResult(null);
-          }, 3200);
-        }
       }
     } catch (err: unknown) {
       if (soundEnabled) playFeedbackSound("invalid");
@@ -188,7 +154,7 @@ function GateScannerContent() {
               <QrCode className="h-5 w-5" />
             </div>
             <div>
-              <p className="eyebrow !text-[#e5c86f]">Entry validation</p>
+              <p className="eyebrow !text-[#e5c86f]">Strict Entry Validation</p>
               <h1 className="editorial-title mt-1 text-3xl">Gate desk</h1>
             </div>
           </div>
@@ -244,21 +210,13 @@ function GateScannerContent() {
         </div>
       </div>
 
-      {/* Flash Validation Controls Toolbar */}
+      {/* Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-xs">
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setAutoAdvance((prev) => !prev)}
-            className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition-all ${
-              autoAdvance
-                ? "bg-amber-100 text-amber-900 border border-amber-300"
-                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-            }`}
-          >
-            <Zap className={`h-3.5 w-3.5 ${autoAdvance ? "text-amber-600 fill-amber-500" : ""}`} />
-            {autoAdvance ? "Flash Auto-Advance ON" : "Manual Advance"}
-          </button>
+          <div className="inline-flex items-center gap-1.5 rounded-xl bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-700">
+            <ShieldCheck className="h-4 w-4 text-emerald-600" />
+            <span>Strict Inspection Mode</span>
+          </div>
 
           <button
             type="button"
@@ -275,65 +233,95 @@ function GateScannerContent() {
         </div>
 
         <p className="text-[11px] text-slate-500">
-          Continuous camera scanning active. Point camera at pass for instant validation.
+          Student details remain on screen for ID check until the next pass is scanned.
         </p>
       </div>
 
-      {/* Validation Result Display (Flash Notification Banner) */}
+      {/* Validation Result Display - Details Stay Until Next Scan */}
       {result && (
         <div
           role="status"
           aria-live="assertive"
-          className={`scan-result-flash p-5 rounded-3xl border-2 text-center space-y-2 shadow-lg transition-all animate-in fade-in zoom-in-95 duration-150 ${
+          className={`scan-result-card relative p-5 sm:p-6 rounded-3xl border-2 shadow-lg transition-all ${
             result.status === "VALID"
-              ? "bg-emerald-600 text-white border-emerald-700"
+              ? "bg-emerald-600 text-white border-emerald-700 shadow-emerald-900/10"
               : result.status === "ALREADY_USED"
-              ? "bg-amber-500 text-slate-950 border-amber-600"
-              : "bg-rose-600 text-white border-rose-700"
+              ? "bg-amber-500 text-slate-950 border-amber-600 shadow-amber-900/10"
+              : "bg-rose-600 text-white border-rose-700 shadow-rose-900/10"
           }`}
         >
-          <div className="flex items-center justify-center gap-2">
+          {/* Dismiss button */}
+          <button
+            type="button"
+            onClick={handleClear}
+            className="absolute top-4 right-4 rounded-full p-1.5 bg-black/20 hover:bg-black/35 text-white/80 hover:text-white transition-all cursor-pointer"
+            title="Clear ticket details"
+          >
+            <X className="h-4 w-4" />
+          </button>
+
+          <div className="flex items-center gap-3">
             {result.status === "VALID" ? (
-              <CheckCircle2 className="w-8 h-8 animate-bounce" />
+              <div className="grid h-12 w-12 place-items-center rounded-2xl bg-white/20 border border-white/30 shrink-0">
+                <CheckCircle2 className="w-7 h-7 text-white" />
+              </div>
             ) : result.status === "ALREADY_USED" ? (
-              <AlertTriangle className="w-8 h-8 animate-pulse" />
+              <div className="grid h-12 w-12 place-items-center rounded-2xl bg-black/20 border border-black/30 shrink-0">
+                <AlertTriangle className="w-7 h-7 text-slate-950" />
+              </div>
             ) : (
-              <XCircle className="w-8 h-8 animate-pulse" />
+              <div className="grid h-12 w-12 place-items-center rounded-2xl bg-white/20 border border-white/30 shrink-0">
+                <XCircle className="w-7 h-7 text-white" />
+              </div>
             )}
-            <h3 className="text-xl font-black tracking-tight uppercase">
-              {result.status === "VALID"
-                ? "ENTRY ALLOWED — VALID"
-                : result.status === "ALREADY_USED"
-                ? "ALREADY USED — DENY ENTRY"
-                : "INVALID TICKET — DENY ENTRY"}
-            </h3>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider opacity-85">
+                {result.status === "VALID"
+                  ? "Identity Verified"
+                  : result.status === "ALREADY_USED"
+                  ? "Security Warning"
+                  : "Invalid Pass"}
+              </p>
+              <h3 className="text-xl sm:text-2xl font-black tracking-tight uppercase">
+                {result.status === "VALID"
+                  ? "ENTRY ALLOWED — VALID"
+                  : result.status === "ALREADY_USED"
+                  ? "ALREADY USED — DENY ENTRY"
+                  : "INVALID TICKET — DENY ENTRY"}
+              </h3>
+            </div>
           </div>
 
           {result.student_name && (
-            <div className="text-sm font-bold pt-1 border-t border-white/20">
-              {result.student_name} ({result.roll_number}) — {result.department}
+            <div className="mt-4 pt-4 border-t border-white/25 grid gap-2 sm:grid-cols-2">
+              <div className="rounded-2xl bg-black/15 p-3.5">
+                <p className="text-[10px] font-bold uppercase tracking-wider opacity-80">Attendee Name</p>
+                <p className="text-lg font-black tracking-tight mt-0.5">{result.student_name}</p>
+              </div>
+
+              <div className="rounded-2xl bg-black/15 p-3.5">
+                <p className="text-[10px] font-bold uppercase tracking-wider opacity-80">Roll Number</p>
+                <p className="text-lg font-black font-mono tracking-wider mt-0.5">{result.roll_number || "—"}</p>
+              </div>
+
+              {result.department && (
+                <div className="rounded-2xl bg-black/15 p-3.5 sm:col-span-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wider opacity-80">Department / Branch</p>
+                  <p className="text-sm font-extrabold mt-0.5">{result.department}</p>
+                </div>
+              )}
             </div>
           )}
 
-          <div className="text-xs font-mono font-semibold opacity-90">
-            Ticket: {result.ticket_code || inputCode || (result.status === "INVALID_TICKET" ? "QR scan" : "")} | Gate: {result.gate_location || gateLocation}
-            {lastLatencyMs !== null && ` | Flash: ${lastLatencyMs}ms`}
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs font-mono font-semibold opacity-90 pt-2 border-t border-white/20">
+            <span>Ticket: {result.ticket_code || inputCode || (result.status === "INVALID_TICKET" ? "QR scan" : "")}</span>
+            <span>Gate: {result.gate_location || gateLocation}</span>
+            {lastLatencyMs !== null && <span>⚡ {lastLatencyMs}ms</span>}
           </div>
 
-          <div className="flex items-center justify-center gap-3 pt-2">
-            <button
-              onClick={() => {
-                if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
-                setResult(null);
-                setInputCode("");
-              }}
-              className="w-full max-w-sm py-2.5 bg-black/25 hover:bg-black/40 text-white font-black text-xs rounded-xl uppercase tracking-wider shadow-sm border border-white/20 transition-all cursor-pointer"
-            >
-              {autoAdvance && result.status === "VALID"
-                ? "⚡ Auto-advancing (or tap to clear)"
-                : "⚡ SCAN NEXT STUDENT"}
-            </button>
-          </div>
+          <p className="mt-2 text-center text-[11px] font-medium opacity-80">
+            Details stay on screen. Point camera at the next pass to verify the next attendee.
+          </p>
         </div>
       )}
 
