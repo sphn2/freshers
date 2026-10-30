@@ -41,7 +41,7 @@ export default function SiteBanners() {
   if (!showMaintenance && !showClosed) return null;
 
   return (
-    <div className="relative z-40 w-full flex flex-col">
+    <div className="no-print relative z-40 w-full flex flex-col">
       {/* 1. Maintenance Mode Banner (Top Priority) */}
       {showMaintenance && (
         <aside

@@ -31,7 +31,7 @@ import {
   Database, UploadCloud, Download, Trash2, Lock, FileUp,
   TrendingUp, BarChart3, Receipt, Printer, CheckSquare, Building2,
   Megaphone, Wrench, AlertOctagon, Filter, Check, GraduationCap, Utensils, RotateCcw,
-  Zap, Clock, Phone
+  Zap, Clock, Phone, Loader2
 } from "lucide-react";
 import RegistrationPopupModal from "@/components/RegistrationPopupModal";
 
@@ -182,7 +182,7 @@ function AdminDashboardContent() {
     transaction_id: "",
     transaction_date: "",
     notes: "",
-    authorized_by_name: "",
+    authorized_by_name: "SAI HARSHA CHERUKU",
   });
   const [submittingSettle, setSubmittingSettle] = useState(false);
   const [receiptSettlement, setReceiptSettlement] = useState<Settlement | null>(null);
@@ -195,6 +195,7 @@ function AdminDashboardContent() {
     total_tickets_issued: 0,
   });
   const [creatingSettlement, setCreatingSettlement] = useState(false);
+  const [downloadingReceiptPdf, setDownloadingReceiptPdf] = useState(false);
   const receiptRef = useRef<HTMLDivElement>(null);
 
   const loadFeeSettings = async () => {
@@ -773,7 +774,119 @@ function AdminDashboardContent() {
   };
 
   const handlePrintReceipt = () => {
-    window.print();
+    const element = document.getElementById("settlement-receipt");
+    if (!element) {
+      window.print();
+      return;
+    }
+
+    const iframe = document.createElement("iframe");
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "none";
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow?.document;
+    if (!doc) {
+      window.print();
+      return;
+    }
+
+    const styleTags = Array.from(document.querySelectorAll("link[rel='stylesheet'], style"))
+      .map((el) => el.outerHTML)
+      .join("\n");
+
+    doc.open();
+    doc.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Settlement Receipt - ${receiptSettlement?.receipt_number || "Receipt"}</title>
+          ${styleTags}
+          <style>
+            @page {
+              margin: 12mm 15mm;
+              size: auto;
+            }
+            body {
+              background: #ffffff !important;
+              color: #0f172a !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+            #settlement-receipt {
+              padding: 0 !important;
+              margin: 0 auto !important;
+              max-width: 720px !important;
+              box-shadow: none !important;
+              border: none !important;
+            }
+            * {
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+          </style>
+        </head>
+        <body>
+          <div id="settlement-receipt">
+            ${element.innerHTML}
+          </div>
+        </body>
+      </html>
+    `);
+    doc.close();
+
+    iframe.contentWindow?.focus();
+    setTimeout(() => {
+      iframe.contentWindow?.print();
+      setTimeout(() => {
+        if (document.body.contains(iframe)) {
+          document.body.removeChild(iframe);
+        }
+      }, 2500);
+    }, 400);
+  };
+
+  const handleDownloadReceiptPdf = async () => {
+    const element = document.getElementById("settlement-receipt");
+    if (!element || !receiptSettlement) return;
+    setDownloadingReceiptPdf(true);
+    try {
+      const html2canvas = (await import("html2canvas-pro")).default;
+      const { jsPDF } = await import("jspdf");
+
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: "#ffffff",
+      });
+      const imgData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+      });
+
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      const margin = 12;
+      const imgWidth = pdfWidth - margin * 2;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+      pdf.addImage(imgData, "PNG", margin, margin, imgWidth, Math.min(imgHeight, pdfHeight - margin * 2));
+      pdf.save(`Settlement_Receipt_${receiptSettlement.receipt_number || receiptSettlement.settlement_date}.pdf`);
+    } catch (err: unknown) {
+      setStatusMsg(`❌ Failed downloading receipt PDF: ${errorMessage(err, "Please try printing instead.")}`);
+    } finally {
+      setDownloadingReceiptPdf(false);
+    }
   };
 
   const loadEvents = async () => {
@@ -4139,7 +4252,7 @@ function AdminDashboardContent() {
                                     transaction_id: "",
                                     transaction_date: new Date().toISOString().slice(0, 10),
                                     notes: "",
-                                    authorized_by_name: "",
+                                    authorized_by_name: "SAI HARSHA CHERUKU",
                                   });
                                   setShowSettleModal(true);
                                 }}
@@ -4358,7 +4471,7 @@ function AdminDashboardContent() {
                         type="text"
                         value={settlementForm.authorized_by_name}
                         onChange={(e) => setSettlementForm((f) => ({ ...f, authorized_by_name: e.target.value }))}
-                        placeholder="e.g. Dr. Rajesh Kumar, Principal"
+                        placeholder="SAI HARSHA CHERUKU"
                         className="field-control mt-1"
                       />
                     </div>
@@ -4397,20 +4510,40 @@ function AdminDashboardContent() {
 
           {/* Settlement Receipt Modal */}
           {receiptSettlement && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-              <div className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-slate-200 max-h-[95vh] overflow-y-auto">
+            <div className="receipt-modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+              <div className="receipt-modal-container w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-slate-200 max-h-[95vh] overflow-y-auto">
                 <div className="flex items-center justify-between p-4 border-b border-slate-100 no-print">
                   <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
                     <Receipt className="w-4 h-4 text-violet-600" /> Settlement Receipt
                   </h3>
-                  <div className="flex gap-2">
+                  <div className="flex items-center gap-2">
                     <button
+                      type="button"
+                      onClick={handleDownloadReceiptPdf}
+                      disabled={downloadingReceiptPdf}
+                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 transition disabled:opacity-50"
+                    >
+                      {downloadingReceiptPdf ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Generating PDF...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Download className="w-3.5 h-3.5" />
+                          <span>Download PDF</span>
+                        </>
+                      )}
+                    </button>
+                    <button
+                      type="button"
                       onClick={handlePrintReceipt}
                       className="px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 transition"
                     >
-                      <Printer className="w-3.5 h-3.5" /> Print / Save PDF
+                      <Printer className="w-3.5 h-3.5" /> Print Receipt
                     </button>
                     <button
+                      type="button"
                       onClick={() => setReceiptSettlement(null)}
                       className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition"
                     >
@@ -4454,8 +4587,8 @@ function AdminDashboardContent() {
                         </div>
                       </div>
                       <div>
-                        <span className="text-[10px] font-extrabold uppercase text-slate-500">Processed By</span>
-                        <div className="font-bold text-slate-900">{receiptSettlement.settler_name || receiptSettlement.settler_email || "—"}</div>
+                        <span className="text-[10px] font-extrabold uppercase text-slate-500">Issued By</span>
+                        <div className="font-bold text-slate-900">SAI HARSHA CHERUKU</div>
                       </div>
                     </div>
                   </div>
@@ -4521,9 +4654,9 @@ function AdminDashboardContent() {
                   {/* Signature Block */}
                   <div className="grid grid-cols-2 gap-8 pt-4">
                     <div className="border-t-2 border-slate-300 pt-3">
-                      <div className="text-[10px] font-extrabold uppercase text-slate-500">Authorized By</div>
-                      <div className="font-bold text-slate-900 mt-1">{receiptSettlement.authorized_by_name || "—"}</div>
-                      <div className="text-[10px] text-slate-400">Signature</div>
+                      <div className="text-[10px] font-extrabold uppercase text-slate-500">Issued & Authorized By</div>
+                      <div className="font-bold text-slate-900 mt-1">{receiptSettlement.authorized_by_name || "SAI HARSHA CHERUKU"}</div>
+                      <div className="text-[10px] text-slate-500">Founder & Administrator · Rudvay Tech</div>
                     </div>
                     <div className="border-t-2 border-slate-300 pt-3">
                       <div className="text-[10px] font-extrabold uppercase text-slate-500">Received By (Organizing Committee)</div>
@@ -4533,8 +4666,8 @@ function AdminDashboardContent() {
                   </div>
 
                   {/* Footer */}
-                  <div className="text-center text-[10px] text-slate-400 border-t border-slate-100 pt-4">
-                    This is a computer-generated settlement receipt. Generated by Sphoorthy Events Platform.
+                  <div className="text-center text-[10px] text-slate-500 border-t border-slate-200 pt-4">
+                    This is a computer-generated settlement receipt. Generated by Rudvay Events Portal.
                   </div>
                 </div>
               </div>

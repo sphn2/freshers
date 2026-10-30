@@ -90,7 +90,7 @@ function SiteFrame({ children }: { children: React.ReactNode }) {
       <SiteBanners />
 
       {/* Top Utility & Corporate Compliance Bar */}
-      <div className="bg-[#101915] text-[#d6cfbe] text-[11px] border-b border-white/10 px-4 py-2 sm:py-1.5 transition-colors">
+      <div className="no-print bg-[#101915] text-[#d6cfbe] text-[11px] border-b border-white/10 px-4 py-2 sm:py-1.5 transition-colors">
         <div className="mx-auto max-w-[1240px] flex flex-col md:flex-row items-center justify-between gap-2">
           {/* Corporate Entity & CIN Notice */}
           <div className="flex items-center gap-2 flex-wrap justify-center md:justify-start">
@@ -157,7 +157,7 @@ function SiteFrame({ children }: { children: React.ReactNode }) {
         </div>
       </div>
 
-      <header className="site-header">
+      <header className="site-header no-print">
         <div className="site-header-inner">
           <Link href="/" className="brand-lockup no-underline flex items-center gap-3">
             <img
@@ -284,7 +284,7 @@ function SiteFrame({ children }: { children: React.ReactNode }) {
 
       <main className="site-main">{children}</main>
 
-      <footer className="site-footer bg-[#131b18] border-t border-[#ded7c9]/20 text-[#e2dcd0] mt-12">
+      <footer className="site-footer no-print bg-[#131b18] border-t border-[#ded7c9]/20 text-[#e2dcd0] mt-12">
         <div className="mx-auto max-w-[1240px] px-4 sm:px-6 pt-12 pb-10">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 pb-10 border-b border-white/10">
             
@@ -512,7 +512,7 @@ function SiteFrame({ children }: { children: React.ReactNode }) {
       </footer>
 
       {user && links.length > 0 && (
-        <nav aria-label="Staff shortcuts" className="fixed inset-x-0 bottom-0 z-50 border-t border-slate-200 bg-[#fbf9f4]/95 px-2 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 backdrop-blur md:hidden">
+        <nav aria-label="Staff shortcuts" className="no-print fixed inset-x-0 bottom-0 z-50 border-t border-slate-200 bg-[#fbf9f4]/95 px-2 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 backdrop-blur md:hidden">
           <div className="mx-auto flex max-w-xl items-center justify-around">
             {links.map(({ href, label, icon: Icon }) => (
               <Link

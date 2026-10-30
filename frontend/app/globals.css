@@ -511,24 +511,29 @@ textarea {
 
 @media print {
   @page {
-    margin: 12mm;
+    margin: 10mm 12mm;
+    size: auto;
   }
 
   body {
     background: white !important;
+    color: #0f172a !important;
   }
 
-  /* Default: hide site chrome when printing ticket passes */
+  /* Universal print chrome hiding */
+  .no-print,
   .site-header,
   .site-footer,
+  nav[aria-label="Staff shortcuts"],
   .ticket-pass > div:last-child {
     display: none !important;
   }
 
   .site-main {
-    width: 100%;
-    min-height: 0;
-    padding: 0;
+    width: 100% !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
   }
 
   .ticket-pass {
@@ -536,34 +541,58 @@ textarea {
     box-shadow: none;
   }
 
-  /* Settlement receipt: hide everything EXCEPT the receipt content */
-  .no-print {
+  /* When a settlement receipt modal is open, isolate and display only the receipt */
+  body:has(#settlement-receipt) {
+    background: #ffffff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  body:has(#settlement-receipt) .admin-dashboard > *:not(:has(#settlement-receipt)) {
     display: none !important;
   }
 
-  /* When a receipt modal is open, only show settlement-receipt */
-  body:has(#settlement-receipt) .admin-dashboard,
-  body:has(#settlement-receipt) .site-header,
-  body:has(#settlement-receipt) .site-footer,
-  body:has(#settlement-receipt) .site-main > *:not(:has(#settlement-receipt)) {
-    display: none !important;
+  body:has(#settlement-receipt) .receipt-modal-backdrop {
+    position: static !important;
+    inset: auto !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: block !important;
+    width: 100% !important;
   }
 
-  #settlement-receipt {
+  body:has(#settlement-receipt) .receipt-modal-container {
+    position: static !important;
+    max-height: none !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    border: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  body:has(#settlement-receipt) #settlement-receipt {
     display: block !important;
     position: static !important;
     width: 100% !important;
+    max-width: 100% !important;
     max-height: none !important;
     overflow: visible !important;
     box-shadow: none !important;
     border: none !important;
     padding: 0 !important;
+    margin: 0 !important;
   }
 
-  /* Ensure receipt text prints in black */
+  /* Ensure colors and backgrounds print sharply */
   #settlement-receipt * {
-    print-color-adjust: exact;
-    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact !important;
+    -webkit-print-color-adjust: exact !important;
   }
 }
 

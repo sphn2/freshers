@@ -1059,7 +1059,7 @@ def mark_settlement_settled(settlement_id):
             transaction_id=str(body["transaction_id"]).strip(),
             transaction_date=str(body.get("transaction_date", "")).strip(),
             notes=str(body.get("notes", "")).strip(),
-            authorized_by_name=str(body.get("authorized_by_name", "")).strip(),
+            authorized_by_name=str(body.get("authorized_by_name", "SAI HARSHA CHERUKU")).strip() or "SAI HARSHA CHERUKU",
         )
         if not record:
             return jsonify({"error": "Settlement not found."}), 404

@@ -559,18 +559,20 @@ class ReportService:
         """
         if event_id:
             rows = db.execute_query(
-                """SELECT ds.*, e.title as event_title
+                """SELECT ds.*, e.title as event_title, p.full_name as settler_name, p.email as settler_email
                    FROM daily_settlements ds
                    LEFT JOIN events e ON ds.event_id = e.id::text
+                   LEFT JOIN profiles p ON ds.settled_by = p.id::text
                    WHERE ds.event_id = %s
                    ORDER BY ds.settlement_date DESC""",
                 (event_id,)
             )
         else:
             rows = db.execute_query(
-                """SELECT ds.*, e.title as event_title
+                """SELECT ds.*, e.title as event_title, p.full_name as settler_name, p.email as settler_email
                    FROM daily_settlements ds
                    LEFT JOIN events e ON ds.event_id = e.id::text
+                   LEFT JOIN profiles p ON ds.settled_by = p.id::text
                    ORDER BY ds.settlement_date DESC"""
             )
         return rows or []
@@ -665,6 +667,7 @@ class ReportService:
         if existing["is_settled"]:
             raise ValueError("This settlement has already been marked as settled.")
 
+        authorized_by = (authorized_by_name or "SAI HARSHA CHERUKU").strip() or "SAI HARSHA CHERUKU"
         now = now_ist_iso()
         db.execute_write(
             """UPDATE daily_settlements
@@ -675,7 +678,7 @@ class ReportService:
                WHERE id = %s""",
             (True, now, settled_by, receiver_name, bank_name, account_number,
              ifsc_code, transaction_id, transaction_date,
-             notes, authorized_by_name, now, settlement_id)
+             notes, authorized_by, now, settlement_id)
         )
         return ReportService.get_settlement_by_id(settlement_id)
 
